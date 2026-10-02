@@ -57,8 +57,8 @@ C++ Flow DSL 엔진(`libUtil`)을 JNI로 그대로 품고 있는 Android
    필요 없지만, 명령어가 실제로 데이터를 받아오려면 아래 3번의
    공공데이터포털 API 키 설정이 먼저 필요합니다.
 3. [공공데이터포털](https://www.data.go.kr)에서 무료로 발급받은
-   서비스키를 `app/src/main/assets/addr.ini`의
-   `service_key=<여기에 입력하세요>` 부분에 채워 넣고 직접
+   서비스키를 `app/src/main/assets/addr.ini`의 `[K_DATA]` 섹션
+   `service_key=<여기에 입력하세요>` 한 곳에 채워 넣고 직접
    빌드해야 합니다(배포용 APK에는 보안상 기본값이 비어 있습니다 —
    v1.1.0 이후 앱 내 설정 화면에서 직접 입력하는 방식을 검토 중입니다).
 

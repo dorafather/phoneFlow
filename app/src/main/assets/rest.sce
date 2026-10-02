@@ -553,7 +553,7 @@ help - 이 도움말 표시}
   전송메시지.주소.도메인 = 설정.KRX.domain
   전송메시지.주소.경로 = /getStockPriceInfo_V2
   전송메시지.주소.파라미터[0].key = serviceKey
-  전송메시지.주소.파라미터[0].val = 설정.KRX.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.주소.파라미터[1].key = resultType
   전송메시지.주소.파라미터[1].val = json
   전송메시지.주소.파라미터[2].key = numOfRows
@@ -569,7 +569,7 @@ help - 이 도움말 표시}
   전송메시지.주소.도메인 = 설정.KRX.domain
   전송메시지.주소.경로 = /getStockPriceInfo_V2
   전송메시지.주소.파라미터[0].key = serviceKey
-  전송메시지.주소.파라미터[0].val = 설정.KRX.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.주소.파라미터[1].key = resultType
   전송메시지.주소.파라미터[1].val = json
   전송메시지.주소.파라미터[2].key = numOfRows
@@ -1279,7 +1279,7 @@ $$$세션.krx_watch_alert_text$$$}
   전송메시지.주소.도메인 = 설정.KMA.domain
   전송메시지.주소.경로 = /getVilageFcst
   전송메시지.주소.파라미터[0].key = serviceKey
-  전송메시지.주소.파라미터[0].val = 설정.KMA.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.주소.파라미터[1].key = pageNo
   전송메시지.주소.파라미터[1].val = 1
   전송메시지.주소.파라미터[2].key = numOfRows
@@ -1927,7 +1927,7 @@ $$$세션.kma_watch_alert_text$$$}
   전송메시지.주소.도메인 = 설정.KECO.domain
   전송메시지.주소.경로 = /getCtprvnRltmMesureDnsty
   전송메시지.주소.파라미터[0].key = serviceKey
-  전송메시지.주소.파라미터[0].val = 설정.KECO.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.주소.파라미터[1].key = returnType
   전송메시지.주소.파라미터[1].val = json
   전송메시지.주소.파라미터[2].key = numOfRows
@@ -2279,7 +2279,7 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.주소.도메인 = 설정.KMA_SPCD.domain
   전송메시지.주소.경로 = /getHoliDeInfo
   전송메시지.주소.파라미터[0].key = ServiceKey
-  전송메시지.주소.파라미터[0].val = 설정.KMA_SPCD.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.주소.파라미터[1].key = pageNo
   전송메시지.주소.파라미터[1].val = 1
   전송메시지.주소.파라미터[2].key = numOfRows
@@ -2873,7 +2873,7 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.주소.도메인 = 설정.MOLIT.domain
   전송메시지.주소.경로 = /getRTMSDataSvcAptTrade
   전송메시지.주소.파라미터[0].key = serviceKey
-  전송메시지.주소.파라미터[0].val = 설정.MOLIT.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.주소.파라미터[1].key = LAWD_CD
   전송메시지.주소.파라미터[1].val = 세션.molit_region_code
   전송메시지.주소.파라미터[2].key = DEAL_YMD
