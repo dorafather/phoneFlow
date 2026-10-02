@@ -1,5 +1,9 @@
 # phoneFlow
 
+<p align="center">
+  <img src="assets/PhoneFLOW.jpg" alt="phoneFlow" width="150"/>
+</p>
+
 > 내 손 안의, 위치를 아는, 공공데이터 전용 Telegram.
 
 phoneFlow는 대한민국 공공데이터포털의 정보를 채팅 한 줄로 바로
