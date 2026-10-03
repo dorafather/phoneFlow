@@ -60,7 +60,7 @@ object FlowMessageRouter : FlowCallback {
     }
 
     override fun onFlowEvent(json: String) {
-        Log.i(TAG, "onFlowEvent: $json")
+        Log.i(TAG, "onFlowEvent: ${AndroidHttpClient.maskSensitiveForLog(json)}")
         try {
             val obj = JSONObject(json)
             val method = obj.optString(K_METHOD, "")
@@ -141,7 +141,7 @@ object FlowMessageRouter : FlowCallback {
             rsp.put(K_ADDR_FOR_REINJECT, addr) // 응답 라우팅(STATE의 NAMESPACE.수신메시지.주소.도메인 매칭)을 위해 원본 주소를 한글 키로 echo
             if (result.error != null) rsp.put("error", result.error)
 
-            Log.i(TAG, "엔진으로 재투입: $rsp")
+            Log.i(TAG, "엔진으로 재투입: ${AndroidHttpClient.maskSensitiveForLog(rsp.toString())}")
             FlowBridge.nativePushEvent(rsp.toString())
         }
     }

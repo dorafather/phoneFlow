@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,23 +19,38 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.notebookflow.engine.FlowBridge
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
 
@@ -42,11 +58,18 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
+private enum class Screen { CHAT, SETTINGS }
+
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
  * nativeSetCallback)는 그대로 재사용하고,
  * ACTION() 콜백 처리만 FlowMessageRouter(REST 통신 모듈의 진입점)로 옮겼다 -
  * MainActivity 자신은 더 이상 FlowCallback을 구현하지 않는다.
+ *
+ * 업무지침_phoneFlow_UI개선_명령어서랍_설정화면.md로 명령어 서랍(☰)과
+ * 설정 화면(⚙)을 추가했다 - 채팅 입력/전송 로직(sendChatInput) 자체는
+ * 전혀 바뀌지 않았다(서랍은 입력창 텍스트만 채워줄 뿐, 전송은 여전히
+ * 사용자가 버튼을 눌러야 함).
  */
 class MainActivity : ComponentActivity() {
 
@@ -80,10 +103,17 @@ class MainActivity : ComponentActivity() {
             messages.add(ChatMessage(text = "엔진 초기화 실패: ${t.message}", fromUser = false))
         }
 
+        val commandGroups = loadCommandGroups(this)
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ChatScreen(messages = messages, onSend = ::sendChatInput)
+                    AppRoot(
+                        messages = messages,
+                        commandGroups = commandGroups,
+                        filesDir = filesDir,
+                        onSend = ::sendChatInput
+                    )
                 }
             }
         }
@@ -116,7 +146,7 @@ class MainActivity : ComponentActivity() {
      * rest.sce/addr.ini는 RUNFLOW()가 현재 작업 디렉터리(= nativeInit에 넘긴
      * baseDir, 즉 filesDir) 기준 상대경로로 읽는다. filesDir에 이미 파일이
      * 있으면 건드리지 않는다 - addr.ini는 사용자가 채운 서비스키와 채팅
-     * 명령(관심종목 추가 등)이 함수.설정저장(SETINI)으로 실제로 써넣는
+     * 명령(관심종목 추가 등)이 함수.설정저장(SETINI)을 통해 실제로 써넣는
      * 대상이라, 매 실행마다 덮어쓰면 그 전부가 다음 실행 때 사라진다
      * (최초 설치 후 앱 실행 시 1회만 복사 - NotebookFlow의
      * addr.ini.template가 addr.ini를 최초 1회만 생성하고 이후 절대
@@ -150,9 +180,146 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@androidx.compose.runtime.Composable
-private fun ChatScreen(messages: List<ChatMessage>, onSend: (String) -> Unit) {
-    var input by remember { mutableStateOf("") }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AppRoot(
+    messages: List<ChatMessage>,
+    commandGroups: List<CommandGroup>,
+    filesDir: File,
+    onSend: (String) -> Unit
+) {
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var screen by remember { mutableStateOf(Screen.CHAT) }
+    // TextFieldValue로 들고 있어야 서랍에서 텍스트를 넣을 때 커서를 항상
+    // 맨 끝에 둘 수 있다(업무지침 "커서를 맨 끝에 두고 사용자가 인자를
+    // 채워 전송" 요구사항) - 일반 String 상태로는 커서 위치를 보장할 수 없다.
+    var input by remember { mutableStateOf(TextFieldValue("")) }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                CommandDrawerContent(
+                    groups = commandGroups,
+                    onCommandPicked = { insert ->
+                        // "입력창에 이미 글자가 있어도 덮어쓴다"(업무지침 1절) -
+                        // 이어붙이면 "주식 관심종목 추가 기상청 날씨"처럼 문자열이
+                        // 엉킬 수 있어 항상 교체한다.
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onSettingsPicked = {
+                        screen = Screen.SETTINGS
+                        scope.launch { drawerState.close() }
+                    }
+                )
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(if (screen == Screen.SETTINGS) "설정" else "phoneFlow") },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "메뉴")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                when (screen) {
+                    Screen.CHAT -> ChatScreen(
+                        messages = messages,
+                        input = input,
+                        onInputChange = { input = it },
+                        onSend = { text ->
+                            onSend(text)
+                            input = TextFieldValue("")
+                        }
+                    )
+                    Screen.SETTINGS -> SettingsScreen(filesDir = filesDir)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommandDrawerContent(
+    groups: List<CommandGroup>,
+    onCommandPicked: (String) -> Unit,
+    onSettingsPicked: () -> Unit
+) {
+    val expanded = remember { mutableStateListOf<String>() }
+
+    Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
+        Text(
+            "phoneFlow",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            groups.forEach { group ->
+                item(key = "group-${group.label}") {
+                    val isOpen = expanded.contains(group.label)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            (if (isOpen) "▾ " else "▸ ") + group.label,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickableCompat {
+                                    if (isOpen) expanded.remove(group.label) else expanded.add(group.label)
+                                }
+                        )
+                    }
+                }
+                if (expanded.contains(group.label)) {
+                    group.items.forEach { cmd ->
+                        item(key = "item-${group.label}-${cmd.label}") {
+                            Text(
+                                cmd.label,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                    .clickableCompat { onCommandPicked(cmd.insert) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        androidx.compose.material3.Divider()
+        Text(
+            "⚙ 설정",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clickableCompat { onSettingsPicked() }
+        )
+    }
+}
+
+private fun Modifier.clickableCompat(onClick: () -> Unit): Modifier =
+    this.clickable(onClick = onClick)
+
+@Composable
+private fun ChatScreen(
+    messages: List<ChatMessage>,
+    input: TextFieldValue,
+    onInputChange: (TextFieldValue) -> Unit,
+    onSend: (String) -> Unit
+) {
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size) {
@@ -169,17 +336,16 @@ private fun ChatScreen(messages: List<ChatMessage>, onSend: (String) -> Unit) {
             ) {
                 TextField(
                     value = input,
-                    onValueChange = { input = it },
+                    onValueChange = onInputChange,
                     modifier = Modifier
                         .weight(1f)
                         .padding(end = 8.dp),
                     placeholder = { Text("메시지를 입력하세요 (예: 핑)") }
                 )
                 Button(onClick = {
-                    val text = input.trim()
+                    val text = input.text.trim()
                     if (text.isNotEmpty()) {
                         onSend(text)
-                        input = ""
                     }
                 }) {
                     Text("전송")
@@ -202,7 +368,7 @@ private fun ChatScreen(messages: List<ChatMessage>, onSend: (String) -> Unit) {
     }
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun ChatBubble(msg: ChatMessage) {
     val alignment = if (msg.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     Box(modifier = Modifier.fillMaxWidth()) {

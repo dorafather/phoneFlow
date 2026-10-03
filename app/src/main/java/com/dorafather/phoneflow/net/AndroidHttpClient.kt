@@ -24,6 +24,14 @@ object AndroidHttpClient {
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 15_000
 
+    // 공공데이터포털 서비스키(또는 그 어떤 키든) 원문이 Logcat에 남지 않도록,
+    // 로그로 내보내기 직전에만 쿼리 파라미터 값을 마스킹한다(실제 요청에는
+    // 영향 없음 - url 변수 자체는 그대로 사용). phoneFlow UI 개선 티켓
+    // 3-1절의 "Logcat 출력에도 키 원문을 찍지 말 것" 요구사항 반영.
+    private val SERVICE_KEY_PARAM = Regex("(?i)(service[_]?key=)[^&\\s]+")
+    fun maskSensitiveForLog(text: String): String =
+        SERVICE_KEY_PARAM.replace(text) { it.groupValues[1] + "***" }
+
     // 네트워크 I/O는 반드시 메인 스레드 밖에서 실행해야 한다(Android
     // NetworkOnMainThreadException) - 엔진 전용 네이티브 스레드(RUNFLOW)와는
     // 별개의 작은 고정 풀. Windows OutboundClient의 "워커 스레드 2개 고정"
@@ -79,7 +87,7 @@ object AndroidHttpClient {
                     BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() }
                 } ?: ""
 
-                Log.i(TAG, "요청 완료: $method $url -> status=$status bodyLen=${text.length}")
+                Log.i(TAG, "요청 완료: $method ${maskSensitiveForLog(url)} -> status=$status bodyLen=${text.length}")
                 callback(HttpResult(ok = status in 200..299, status = status, body = text))
             } catch (t: Throwable) {
                 Log.e(TAG, "요청 실패: $method $url", t)

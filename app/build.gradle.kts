@@ -92,4 +92,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    // 명령어 서랍(☰)의 메뉴 아이콘 - material3는 아이콘을 자체 포함하지
+    // 않고 이 별도 아티팩트(core 아이콘셋)에 기대야 한다.
+    implementation("androidx.compose.material:material-icons-core")
 }
