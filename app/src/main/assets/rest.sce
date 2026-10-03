@@ -58,6 +58,7 @@
 주식 관심종목 조회 - 등록된 관심종목 시세 조회
 주식 관심종목 추가 [종목명] - 관심종목 등록(최대 5개)
 주식 관심종목 삭제 [종목명] - 관심종목 해제
+주식 시세 [종목명] - 등록된 관심종목 중 하나만 시세 조회
 기상청 날씨 [지역] - 단기예보 조회(지역 생략 시 기본 지역)
 기상청 지역 추가 [지역] - 관심지역 등록(최대 5개)
 기상청 지역 삭제 [지역] - 관심지역 해제
@@ -171,14 +172,46 @@ help - 이 도움말 표시}
     함수.단어분리(cmd_word_list,세션.chat_input_text)
     함수.단어합치기(cmd_rest,세션.리스트.cmd_word_list,1)
     함수.앞자리비교(cmd_관심종목,세션.cmd_rest,관심종목)
+    함수.앞자리비교(cmd_시세,세션.cmd_rest,시세)
     처리.텔레그램주식명령분기
 }
 처리::TELEGRAM.텔레그램주식명령분기
 {
   만약에(세션.cmd_관심종목 == 1)
     처리.텔레그램주식관심종목명령처리
+  그외그외(세션.cmd_시세 == 1)
+    처리.텔레그램주식시세명령처리
   그외
     전송.명령모름응답
+}
+처리::TELEGRAM.텔레그램주식시세명령처리
+{
+  만약에(참)
+    함수.단어분리(krx_quote_word_list,세션.cmd_rest)
+    함수.단어합치기(krx_quote_target_name,세션.리스트.krx_quote_word_list,1)
+    함수.쪼개기(krx_quote_watch_list,세션.krx_watch_csv,|)
+    함수.저장(krx_quote_idx,0)
+    처리.KRX시세단건순회
+}
+처리::KRX.KRX시세단건순회
+{
+  만약에(세션.krx_quote_idx >= 세션.리스트.krx_quote_watch_list.SIZE)
+    함수.저장(krx_reply_text,문장.KRX시세단건실패문장)
+    전송.주식관심종목응답전송
+  그외
+    함수.앞자리비교(krx_quote_match,세션.리스트.krx_quote_watch_list[세션.krx_quote_idx],세션.krx_quote_target_name)
+    처리.KRX시세단건항목판정
+}
+처리::KRX.KRX시세단건항목판정
+{
+  만약에(세션.krx_quote_match == 1)
+    함수.쪼개기(krx_quote_item_parts,세션.리스트.krx_quote_watch_list[세션.krx_quote_idx],:)
+    함수.저장(krx_walk_code,세션.리스트.krx_quote_item_parts[1])
+    함수.저장(krx_mode,단건시세조회)
+    전송.KRX시세조회전송
+  그외
+    함수.더하기(krx_quote_idx,세션.krx_quote_idx,1)
+    처리.KRX시세단건순회
 }
 처리::TELEGRAM.텔레그램주식관심종목명령처리
 {
@@ -370,8 +403,23 @@ help - 이 도움말 표시}
   그외그외(세션.krx_mode == 폴링단건)
     함수.객체저장(krx_price_items,수신메시지.response.body.items.item)
     처리.주식감시단건처리
+  그외그외(세션.krx_mode == 단건시세조회)
+    함수.객체저장(krx_quote_price_items,수신메시지.response.body.items.item)
+    처리.KRX시세단건응답처리
   그외
     로그.출력(KRX 알 수 없는 응답 모드)
+}
+처리::KRX.KRX시세단건응답처리
+{
+  만약에(세션.객체.krx_quote_price_items[0].clpr == NULL)
+    함수.저장(krx_reply_text,문장.KRX시세단건실패문장)
+    전송.주식관심종목응답전송
+  그외
+    함수.저장(krx_line_name,세션.객체.krx_quote_price_items[0].itmsNm)
+    함수.저장(krx_line_price,세션.객체.krx_quote_price_items[0].clpr)
+    함수.저장(krx_line_rate,세션.객체.krx_quote_price_items[0].fltRt)
+    함수.저장(krx_reply_text,문장.KRX주식시세라인문장)
+    전송.주식관심종목응답전송
 }
 처리::KRX.주식종목검색순회
 {
@@ -613,6 +661,8 @@ $$$세션.krx_watch_alert_text$$$}
 {등록된 관심종목이 없습니다. "주식 관심종목 추가 삼성전자"처럼 말씀해주세요.}
 문장::TELEGRAM.주식관심종목추가한도초과문장
 {이미 관심종목이 5개 등록되어 있어 더 추가할 수 없습니다. 기존 종목을 삭제한 후 다시 시도해주세요.}
+문장::KRX.KRX시세단건실패문장
+{"$$$세션.krx_quote_target_name$$$"은(는) 등록된 관심종목이 아닙니다. "주식 관심종목 조회"로 등록된 종목을 확인해보세요.}
 처리::FLOW.기상청관심지역초기화
 {
   만약에(참)

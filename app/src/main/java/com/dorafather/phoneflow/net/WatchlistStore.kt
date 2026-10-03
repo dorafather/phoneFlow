@@ -34,10 +34,11 @@ object WatchlistStore {
         "기상청" to Category("기상청 관심지역", "KMA_WATCHLIST", "지역"),
         "미세먼지" to Category("미세먼지 관심지역", "KECO_WATCHLIST", "지역"),
         "실거래가" to Category("실거래가 관심지역", "MOLIT_WATCHLIST", "지역"),
+        "주식" to Category("주식 관심종목", "KRX_WATCHLIST", "종목"),
     )
 
-    /** "강남구:11680"처럼 코드가 붙은 값은 조회 명령에 쓸 이름만 돌려준다("강남구"). */
-    fun regionNamesForGroup(filesDir: File, groupLabel: String): List<String> {
+    /** "강남구:11680"/"삼성전자:005930"처럼 코드가 붙은 값은 조회 명령에 쓸 이름만 돌려준다. */
+    fun itemNamesForGroup(filesDir: File, groupLabel: String): List<String> {
         val cat = GROUP_LABEL_TO_CATEGORY[groupLabel] ?: return emptyList()
         val f = File(filesDir, "addr.ini")
         if (!f.exists()) return emptyList()

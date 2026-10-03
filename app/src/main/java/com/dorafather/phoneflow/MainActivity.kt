@@ -250,17 +250,26 @@ private fun AppRoot(
     }
 }
 
-// "OO 지역 조회" 리프를 더 펼치면, 그 카테고리에 지금 등록된 지역이 바로
-// 하위 항목으로 나온다(addr.ini를 즉시 읽을 뿐 rest.sce 변경은 없음 -
-// 2026-10-03 "왜 복잡하게 생각하지?" 피드백: 등록된 지역 하나를 탭하면 그
-// 지역용 "조회 문자열"이 입력창에 채워지면 그걸로 끝). 이미 help 문장에
-// 있는 "기상청 날씨 [지역]"/"미세먼지 [지역]"/"실거래가 [지역명] [계약년월]"
-// 단건 조회 포맷을 그대로 재사용한다 - 주식은 단건 조회 명령 자체가
-// rest.sce에 없어서(관심종목 조회는 항상 전체 목록) 대상에서 제외.
-private val REGION_QUERY_TEMPLATES: Map<String, (String) -> String> = mapOf(
+// "OO 조회" 리프를 더 펼치면, 그 카테고리에 지금 등록된 항목이 바로 하위
+// 항목으로 나온다(addr.ini를 즉시 읽을 뿐, 보여주는 용도 자체는 rest.sce
+// 변경이 없음 - 2026-10-03 "왜 복잡하게 생각하지?" 피드백: 등록된 항목
+// 하나를 탭하면 그 항목용 "조회 문자열"이 입력창에 채워지면 그걸로 끝).
+// 지역 3종(기상청/미세먼지/실거래가)은 이미 있던 "기상청 날씨 [지역]"/
+// "미세먼지 [지역]"/"실거래가 [지역명] [계약년월]" 단건 조회 포맷을 그대로
+// 재사용했다. 주식은 그런 단건 조회 명령이 rest.sce에 아예 없어서(기존
+// "관심종목 조회"는 항상 전체 목록) "주식 시세 [종목명]" 명령을 rest.sce에
+// 새로 추가했다(2026-10-03 "주식도 똑같이 해줘" 요청).
+private val LEAF_LABEL_TO_SUBTREE = mapOf(
+    "기상청" to "지역 조회",
+    "미세먼지" to "지역 조회",
+    "실거래가" to "지역 조회",
+    "주식" to "관심종목 조회",
+)
+private val ITEM_QUERY_TEMPLATES: Map<String, (String) -> String> = mapOf(
     "기상청" to { region -> "기상청 날씨 $region" },
     "미세먼지" to { region -> "미세먼지 $region" },
-    "실거래가" to { region -> "실거래가 $region " } // 계약년월은 사용자가 이어서 입력
+    "실거래가" to { region -> "실거래가 $region " }, // 계약년월은 사용자가 이어서 입력
+    "주식" to { name -> "주식 시세 $name" }
 )
 
 @Composable
@@ -302,8 +311,8 @@ private fun CommandDrawerContent(
                 }
                 if (expanded.contains(group.label)) {
                     group.items.forEach { cmd ->
-                        val regionTemplate = REGION_QUERY_TEMPLATES[group.label]
-                        if (cmd.label == "지역 조회" && regionTemplate != null) {
+                        val itemTemplate = ITEM_QUERY_TEMPLATES[group.label]
+                        if (cmd.label == LEAF_LABEL_TO_SUBTREE[group.label] && itemTemplate != null) {
                             val qKey = "${group.label}-${cmd.label}"
                             item(key = "item-$qKey") {
                                 val qOpen = expandedQueries.contains(qKey)
@@ -318,11 +327,11 @@ private fun CommandDrawerContent(
                                 )
                             }
                             if (expandedQueries.contains(qKey)) {
-                                val regions = WatchlistStore.regionNamesForGroup(filesDir, group.label)
-                                if (regions.isEmpty()) {
+                                val names = WatchlistStore.itemNamesForGroup(filesDir, group.label)
+                                if (names.isEmpty()) {
                                     item(key = "item-$qKey-empty") {
                                         Text(
-                                            "등록된 지역 없음",
+                                            "등록된 항목 없음",
                                             style = MaterialTheme.typography.bodySmall,
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -330,14 +339,14 @@ private fun CommandDrawerContent(
                                         )
                                     }
                                 } else {
-                                    regions.forEach { region ->
-                                        item(key = "item-$qKey-$region") {
+                                    names.forEach { name ->
+                                        item(key = "item-$qKey-$name") {
                                             Text(
-                                                region,
+                                                name,
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .padding(start = 48.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                                                    .clickableCompat { onCommandPicked(regionTemplate(region)) }
+                                                    .clickableCompat { onCommandPicked(itemTemplate(name)) }
                                             )
                                         }
                                     }
