@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.AddrIniStore
 import com.dorafather.phoneflow.net.AndroidHttpClient
+import com.dorafather.phoneflow.net.WatchlistStore
 import java.util.Calendar
 import java.util.Locale
 
@@ -59,10 +60,38 @@ fun SettingsScreen(filesDir: java.io.File) {
     var maskedKey by remember { mutableStateOf(AddrIniStore.readMasked(filesDir)) }
     var newKeyInput by remember { mutableStateOf("") }
     var saveMessage by remember { mutableStateOf<String?>(null) }
+    // 채팅 화면에서 "관심종목/지역 추가·삭제"로 바뀐 내용을 설정 화면에
+    // 들어올 때마다 새로 반영하기 위해 remember 하나로 들고, 새로고침
+    // 버튼으로도 다시 읽을 수 있게 한다 - API 호출 없이 addr.ini만 읽으므로
+    // 매번 다시 읽어도 비용이 거의 없다.
+    var watchlist by remember { mutableStateOf(WatchlistStore.readAll(filesDir)) }
 
     val statuses = remember { mutableStateMapOf<String, CheckStatus>() }
 
     LazyColumn(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("등록 현황", style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(onClick = { watchlist = WatchlistStore.readAll(filesDir) }) {
+                    Text("새로고침")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            watchlist.forEach { cat ->
+                Text(cat.label, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (cat.items.isEmpty()) "등록된 항목 없음" else cat.items.joinToString(", "),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Divider()
+            Spacer(Modifier.height(16.dp))
+        }
         item {
             Text("공공데이터포털 인증키", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
