@@ -29,8 +29,18 @@ object AndroidHttpClient {
     // 영향 없음 - url 변수 자체는 그대로 사용). phoneFlow UI 개선 티켓
     // 3-1절의 "Logcat 출력에도 키 원문을 찍지 말 것" 요구사항 반영.
     private val SERVICE_KEY_PARAM = Regex("(?i)(service[_]?key=)[^&\\s]+")
-    fun maskSensitiveForLog(text: String): String =
-        SERVICE_KEY_PARAM.replace(text) { it.groupValues[1] + "***" }
+    // ADDR 오브젝트가 JSON으로 그대로 로그에 찍힐 때("파라미터": [{"key":"serviceKey",
+    // "val":"실제키"}, ...])는 위 쿼리파라미터 정규식이 매치하지 않는다 - 실기기
+    // 로그에서 재확인(onFlowEvent/엔진으로 재투입 두 로그 모두 이 JSON 형태라
+    // "service_key=" 패턴이 아예 없었음). "key":"serviceKey" 다음에 오는 "val"의
+    // 값만 별도로 마스킹한다.
+    private val SERVICE_KEY_JSON_VAL = Regex(
+        "(?i)(\"key\"\\s*:\\s*\"service[_]?key\"\\s*,\\s*\"val\"\\s*:\\s*\")[^\"]*"
+    )
+    fun maskSensitiveForLog(text: String): String {
+        val afterParam = SERVICE_KEY_PARAM.replace(text) { it.groupValues[1] + "***" }
+        return SERVICE_KEY_JSON_VAL.replace(afterParam) { it.groupValues[1] + "***" }
+    }
 
     // 네트워크 I/O는 반드시 메인 스레드 밖에서 실행해야 한다(Android
     // NetworkOnMainThreadException) - 엔진 전용 네이티브 스레드(RUNFLOW)와는
