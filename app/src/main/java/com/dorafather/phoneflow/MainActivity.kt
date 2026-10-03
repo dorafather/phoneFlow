@@ -49,6 +49,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.FlowMessageRouter
+import com.dorafather.phoneflow.net.WatchlistStore
 import com.notebookflow.engine.FlowBridge
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -202,6 +203,7 @@ private fun AppRoot(
             ModalDrawerSheet {
                 CommandDrawerContent(
                     groups = commandGroups,
+                    filesDir = filesDir,
                     onCommandPicked = { insert ->
                         // "입력창에 이미 글자가 있어도 덮어쓴다"(업무지침 1절) -
                         // 이어붙이면 "주식 관심종목 추가 기상청 날씨"처럼 문자열이
@@ -248,13 +250,28 @@ private fun AppRoot(
     }
 }
 
+// "OO 지역 조회" 리프를 더 펼치면, 그 카테고리에 지금 등록된 지역이 바로
+// 하위 항목으로 나온다(addr.ini를 즉시 읽을 뿐 rest.sce 변경은 없음 -
+// 2026-10-03 "왜 복잡하게 생각하지?" 피드백: 등록된 지역 하나를 탭하면 그
+// 지역용 "조회 문자열"이 입력창에 채워지면 그걸로 끝). 이미 help 문장에
+// 있는 "기상청 날씨 [지역]"/"미세먼지 [지역]"/"실거래가 [지역명] [계약년월]"
+// 단건 조회 포맷을 그대로 재사용한다 - 주식은 단건 조회 명령 자체가
+// rest.sce에 없어서(관심종목 조회는 항상 전체 목록) 대상에서 제외.
+private val REGION_QUERY_TEMPLATES: Map<String, (String) -> String> = mapOf(
+    "기상청" to { region -> "기상청 날씨 $region" },
+    "미세먼지" to { region -> "미세먼지 $region" },
+    "실거래가" to { region -> "실거래가 $region " } // 계약년월은 사용자가 이어서 입력
+)
+
 @Composable
 private fun CommandDrawerContent(
     groups: List<CommandGroup>,
+    filesDir: File,
     onCommandPicked: (String) -> Unit,
     onSettingsPicked: () -> Unit
 ) {
     val expanded = remember { mutableStateListOf<String>() }
+    val expandedQueries = remember { mutableStateListOf<String>() }
 
     Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
         Text(
@@ -285,14 +302,57 @@ private fun CommandDrawerContent(
                 }
                 if (expanded.contains(group.label)) {
                     group.items.forEach { cmd ->
-                        item(key = "item-${group.label}-${cmd.label}") {
-                            Text(
-                                cmd.label,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                                    .clickableCompat { onCommandPicked(cmd.insert) }
-                            )
+                        val regionTemplate = REGION_QUERY_TEMPLATES[group.label]
+                        if (cmd.label == "지역 조회" && regionTemplate != null) {
+                            val qKey = "${group.label}-${cmd.label}"
+                            item(key = "item-$qKey") {
+                                val qOpen = expandedQueries.contains(qKey)
+                                Text(
+                                    (if (qOpen) "▾ " else "▸ ") + cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat {
+                                            if (qOpen) expandedQueries.remove(qKey) else expandedQueries.add(qKey)
+                                        }
+                                )
+                            }
+                            if (expandedQueries.contains(qKey)) {
+                                val regions = WatchlistStore.regionNamesForGroup(filesDir, group.label)
+                                if (regions.isEmpty()) {
+                                    item(key = "item-$qKey-empty") {
+                                        Text(
+                                            "등록된 지역 없음",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 48.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                } else {
+                                    regions.forEach { region ->
+                                        item(key = "item-$qKey-$region") {
+                                            Text(
+                                                region,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 48.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                                    .clickableCompat { onCommandPicked(regionTemplate(region)) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onCommandPicked(cmd.insert) }
+                                )
+                            }
                         }
                     }
                 }

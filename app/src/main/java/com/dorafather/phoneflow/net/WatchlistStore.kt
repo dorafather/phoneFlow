@@ -26,6 +26,29 @@ object WatchlistStore {
 
     data class CategoryStatus(val label: String, val items: List<String>)
 
+    // 드로워의 "OO 지역 조회" 하위트리 전용 - 명령어 그룹 라벨("기상청"/"미세먼지"/
+    // "실거래가")로 바로 찾을 수 있게 CATEGORIES와 별도로 키를 둔다. 주식은
+    // rest.sce에 단건 조회 명령 자체가 없어 포함하지 않는다(MainActivity의
+    // REGION_QUERY_TEMPLATES와 그룹 라벨 기준으로 1:1 대응).
+    private val GROUP_LABEL_TO_CATEGORY = mapOf(
+        "기상청" to Category("기상청 관심지역", "KMA_WATCHLIST", "지역"),
+        "미세먼지" to Category("미세먼지 관심지역", "KECO_WATCHLIST", "지역"),
+        "실거래가" to Category("실거래가 관심지역", "MOLIT_WATCHLIST", "지역"),
+    )
+
+    /** "강남구:11680"처럼 코드가 붙은 값은 조회 명령에 쓸 이름만 돌려준다("강남구"). */
+    fun regionNamesForGroup(filesDir: File, groupLabel: String): List<String> {
+        val cat = GROUP_LABEL_TO_CATEGORY[groupLabel] ?: return emptyList()
+        val f = File(filesDir, "addr.ini")
+        if (!f.exists()) return emptyList()
+        val section = parseIni(f.readText())[cat.section] ?: emptyMap()
+        return (1..5).mapNotNull { i ->
+            section["${cat.slotPrefix}$i"]?.trim()
+                ?.takeIf { it.isNotEmpty() && it != EMPTY_SLOT }
+                ?.substringBefore(":")
+        }
+    }
+
     fun readAll(filesDir: File): List<CategoryStatus> {
         val f = File(filesDir, "addr.ini")
         val sections = if (f.exists()) parseIni(f.readText()) else emptyMap()
