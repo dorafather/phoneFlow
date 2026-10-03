@@ -11,6 +11,7 @@
   FLOW.수신메시지.이벤트명 == 공휴일알림틱    처리.공휴일알림확인처리
   KMA_SPCD.수신메시지.응답코드 == 200    처리.KMASPCD응답분기처리
   MOLIT.수신메시지.응답코드 == 200    처리.MOLIT응답분기처리
+  ICN.수신메시지.응답코드 == 200    처리.ICN응답분기처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -22,6 +23,7 @@
     함수.앞자리비교(cmd_미세먼지,세션.chat_input_text,미세먼지)
     함수.앞자리비교(cmd_공휴일,세션.chat_input_text,공휴일)
     함수.앞자리비교(cmd_실거래가,세션.chat_input_text,실거래가)
+    함수.앞자리비교(cmd_인천공항,세션.chat_input_text,인천공항)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -38,6 +40,8 @@
     처리.텔레그램공휴일명령처리
   그외그외(세션.cmd_실거래가 == 1)
     처리.텔레그램실거래가명령처리
+  그외그외(세션.cmd_인천공항 == 1)
+    처리.텔레그램인천공항명령처리
   그외
     전송.명령모름응답
 }
@@ -75,6 +79,10 @@
 실거래가 지역추가 [지역명] - 관심지역 등록(최대 5개, 서울 25개구)
 실거래가 지역삭제 [지역명] - 관심지역 해제
 실거래가 지역조회 - 등록된 관심지역 목록 조회
+인천공항 도착 - 인천공항 오늘 도착편 요약(상위 5건)
+인천공항 도착 [공항코드] - 해당 공항발 오늘 도착편만 조회(예: NRT)
+인천공항 출발 - 인천공항 오늘 출발편 요약(상위 5건)
+인천공항 출발 [공항코드] - 해당 공항행 오늘 출발편만 조회(예: NRT)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -2968,3 +2976,157 @@ $$$세션.keco_watch_alert_text$$$}
 {등록된 관심지역: $$$세션.molit_list_lines$$$}
 문장::MOLIT.MOLIT지역목록라인문장
 {$$$세션.리스트.molit_list_parts[0]$$$($$$세션.리스트.molit_list_parts[1]$$$)}
+처리::TELEGRAM.텔레그램인천공항명령처리
+{
+  만약에(참)
+    함수.단어분리(icn_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(icn_cmd_rest,세션.리스트.icn_cmd_word_list,1)
+    처리.텔레그램인천공항명령분기
+}
+처리::TELEGRAM.텔레그램인천공항명령분기
+{
+  만약에(세션.icn_cmd_rest === 도착)
+    함수.저장(icn_mode,도착)
+    처리.ICN명령파싱
+  그외그외(세션.icn_cmd_rest === 출발)
+    함수.저장(icn_mode,출발)
+    처리.ICN명령파싱
+  그외
+    전송.명령모름응답
+}
+처리::ICN.ICN명령파싱
+{
+  만약에(참)
+    함수.단어분리(icn_arg_word_list,세션.icn_cmd_rest)
+    처리.ICN인자개수분기
+}
+처리::ICN.ICN인자개수분기
+{
+  만약에(세션.리스트.icn_arg_word_list.SIZE <= 1)
+    함수.저장(icn_airport_code,없음)
+    처리.ICN요청전송
+  그외
+    함수.저장(icn_airport_code,세션.리스트.icn_arg_word_list[1])
+    처리.ICN요청전송
+}
+처리::ICN.ICN요청전송
+{
+  만약에(세션.icn_mode == 도착) 그리고(세션.icn_airport_code == 없음)
+    전송.ICN도착조회전송
+  그외그외(세션.icn_mode == 도착)
+    전송.ICN도착코드조회전송
+  그외그외(세션.icn_mode == 출발) 그리고(세션.icn_airport_code == 없음)
+    전송.ICN출발조회전송
+  그외
+    전송.ICN출발코드조회전송
+}
+처리::ICN.ICN응답분기처리
+{
+  만약에(참)
+    함수.객체저장(icn_items,수신메시지.response.body.items)
+    함수.저장(icn_total,수신메시지.response.body.오늘전체)
+    함수.저장(icn_delay,수신메시지.response.body.오늘지연)
+    함수.저장(icn_cancel,수신메시지.response.body.오늘결항)
+    함수.저장(icn_idx,0)
+    함수.저장(icn_lines,없음)
+    처리.ICN목록순회
+}
+처리::ICN.ICN목록순회
+{
+  만약에(세션.객체.icn_items[세션.icn_idx].flightId != NULL)
+    함수.저장(icn_line_flight,세션.객체.icn_items[세션.icn_idx].flightId)
+    함수.저장(icn_line_airline,세션.객체.icn_items[세션.icn_idx].airline)
+    함수.저장(icn_line_airport,세션.객체.icn_items[세션.icn_idx].airport)
+    함수.저장(icn_line_time,세션.객체.icn_items[세션.icn_idx].time)
+    함수.저장(icn_line_remark,세션.객체.icn_items[세션.icn_idx].remark)
+    함수.저장(icn_line_term,세션.객체.icn_items[세션.icn_idx].terminalid)
+    함수.저장(icn_line_gate,세션.객체.icn_items[세션.icn_idx].gatenumber)
+    처리.ICN라인추가
+  그외
+    처리.ICN회신조립
+}
+처리::ICN.ICN라인추가
+{
+  만약에(세션.icn_lines == 없음)
+    함수.저장(icn_lines,문장.ICN요약라인문장)
+    함수.더하기(icn_idx,세션.icn_idx,1)
+    처리.ICN목록순회
+  그외
+    함수.붙이기(icn_lines,|,문장.ICN요약라인문장)
+    함수.더하기(icn_idx,세션.icn_idx,1)
+    처리.ICN목록순회
+}
+처리::ICN.ICN회신조립
+{
+  만약에(세션.icn_total == 0) 그리고(세션.icn_mode == 도착)
+    함수.저장(icn_reply_text,문장.ICN도착없음문장)
+    전송.ICN응답전송
+  그외그외(세션.icn_total == 0)
+    함수.저장(icn_reply_text,문장.ICN출발없음문장)
+    전송.ICN응답전송
+  그외그외(세션.icn_mode == 도착)
+    함수.저장(icn_reply_text,문장.ICN도착요약문장)
+    전송.ICN응답전송
+  그외
+    함수.저장(icn_reply_text,문장.ICN출발요약문장)
+    전송.ICN응답전송
+}
+전송::ICN.ICN도착조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.ICN.domain
+  전송메시지.주소.경로 = /getPassengerArrivalsDSOdp
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+}
+전송::ICN.ICN도착코드조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.ICN.domain
+  전송메시지.주소.경로 = /getPassengerArrivalsDSOdp
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+  전송메시지.주소.파라미터[2].key = airport_code
+  전송메시지.주소.파라미터[2].val = 세션.icn_airport_code
+}
+전송::ICN.ICN출발조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.ICN.domain
+  전송메시지.주소.경로 = /getPassengerDeparturesDSOdp
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+}
+전송::ICN.ICN출발코드조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.ICN.domain
+  전송메시지.주소.경로 = /getPassengerDeparturesDSOdp
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+  전송메시지.주소.파라미터[2].key = airport_code
+  전송메시지.주소.파라미터[2].val = 세션.icn_airport_code
+}
+전송::FLOW.ICN응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.icn_reply_text
+}
+문장::ICN.ICN요약라인문장
+{$$$세션.icn_line_flight$$$ $$$세션.icn_line_airline$$$ $$$세션.icn_line_airport$$$ $$$세션.icn_line_time$$$ $$$세션.icn_line_remark$$$ T$$$세션.icn_line_term$$$ G$$$세션.icn_line_gate$$$}
+문장::ICN.ICN도착요약문장
+{[인천공항 기준] 오늘 도착편 전체 $$$세션.icn_total$$$건 중 지연 $$$세션.icn_delay$$$건, 결항 $$$세션.icn_cancel$$$건|$$$세션.icn_lines$$$}
+문장::ICN.ICN출발요약문장
+{[인천공항 기준] 오늘 출발편 전체 $$$세션.icn_total$$$건 중 지연 $$$세션.icn_delay$$$건, 결항 $$$세션.icn_cancel$$$건|$$$세션.icn_lines$$$}
+문장::ICN.ICN도착없음문장
+{[인천공항 기준] 오늘은 등록된 도착편이 없습니다.}
+문장::ICN.ICN출발없음문장
+{[인천공항 기준] 오늘은 등록된 출발편이 없습니다.}

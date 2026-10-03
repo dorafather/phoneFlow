@@ -48,6 +48,7 @@ private val SERVICES = listOf(
     ServiceInfo("KECO", "미세먼지(KECO)", "https://www.data.go.kr/data/15073861/openapi.do"),
     ServiceInfo("KMA_SPCD", "공휴일(KMA_SPCD)", "https://www.data.go.kr/data/15012690/openapi.do"),
     ServiceInfo("MOLIT", "실거래가(MOLIT)", "https://www.data.go.kr/data/15126469/openapi.do"),
+    ServiceInfo("ICN", "인천공항(ICN)", "https://www.data.go.kr/data/15095074/openapi.do"),
 )
 
 private enum class CheckStatus { UNKNOWN, CHECKING, OK, FAIL }
@@ -197,6 +198,10 @@ private fun runHealthChecks(serviceKey: String, onResult: (String, Boolean) -> U
         "KECO" to "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?serviceKey=$enc&returnType=json&numOfRows=1&pageNo=1&sidoName=서울&ver=1.5",
         "KMA_SPCD" to "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getHoliDeInfo?ServiceKey=$enc&pageNo=1&numOfRows=1&solYear=$thisYear&solMonth=01&_type=json",
         "MOLIT" to "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=$enc&LAWD_CD=11680&DEAL_YMD=$molitYm&pageNo=1&numOfRows=1&_type=json",
+        // ICN은 개발계정 일 500회 한도라 airport_code=ZZZ(존재하지 않는 공항코드,
+        // 실측으로 totalCount=0/응답 108바이트 확인됨)로 가장 가벼운 호출만
+        // 보낸다 - 키가 맞으면 정상 200에 "_ERROR" 문자열이 없어 ✅로 집계된다.
+        "ICN" to "https://apis.data.go.kr/B551177/StatusOfPassengerFlightsDSOdp/getPassengerArrivalsDSOdp?serviceKey=$enc&type=json&airport_code=ZZZ",
     )
 
     checks.forEach { (svcKey, url) ->

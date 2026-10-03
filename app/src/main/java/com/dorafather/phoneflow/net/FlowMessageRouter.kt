@@ -3,8 +3,13 @@ package com.dorafather.phoneflow.net
 import android.util.Log
 import com.notebookflow.engine.FlowBridge
 import com.notebookflow.engine.FlowCallback
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * JniApp::ACTION()(C++, flowjni.cpp가 아니라 그 안에서 호출되는 JniApp.cpp)이
@@ -140,6 +145,7 @@ object FlowMessageRouter : FlowCallback {
             rsp.put(K_METHOD_FOR_REINJECT, method)
             rsp.put(K_ADDR_FOR_REINJECT, addr) // 응답 라우팅(STATE의 NAMESPACE.수신메시지.주소.도메인 매칭)을 위해 원본 주소를 한글 키로 echo
             if (result.error != null) rsp.put("error", result.error)
+            compactIcnResponseIfNeeded(domain, rsp)
 
             Log.i(TAG, "엔진으로 재투입: ${AndroidHttpClient.maskSensitiveForLog(rsp.toString())}")
             FlowBridge.nativePushEvent(rsp.toString())
@@ -164,6 +170,62 @@ object FlowMessageRouter : FlowCallback {
             }
         }
         return sb.toString()
+    }
+
+    // ICN(인천공항 여객편 주간 운항 현황) 전용 압축 - 티켓 실측 결과, airport_code
+    // 없이 부르면 하루치만도 약 1,200건(2MB)이고, airport_code로 좁혀도 혼잡한
+    // 노선(나리타 등) 하나가 주간 500건을 넘는다. 이 DSL 엔진은 세션 한 사이클당
+    // 처리:: 호출(재귀 포함)이 200회로 하드 제한돼 있어(NotebookFlow CLAUDE.md
+    // 1.9절, 같은 libUtil을 쓰므로 phoneFlow에도 동일 적용), 그 어느 쪽도 "배열을
+    // 처리::로 재귀 순회"하는 이 프로젝트의 기본 패턴으로는 안전하게 못 돈다.
+    // 그래서 이 한 서비스만 예외적으로 Kotlin 쪽(엔진에 넣기 전)에서 오늘 날짜로
+    // 거르고 상위 5건 + 집계(오늘전체/오늘지연/오늘결항)만 남긴다 - 나머지 모든
+    // 서비스는 여전히 원문 그대로 엔진에 넘기고 가공은 rest.sce가 전담한다.
+    private const val ICN_DOMAIN = "https://apis.data.go.kr/B551177/StatusOfPassengerFlightsDSOdp"
+    private const val ICN_DISPLAY_LIMIT = 5
+
+    private fun icnField(item: JSONObject, key: String): String {
+        val raw = item.optString(key, "")
+        return if (raw.isBlank() || raw == "null") "" else raw
+    }
+
+    private fun compactIcnResponseIfNeeded(domain: String, rsp: JSONObject) {
+        if (domain != ICN_DOMAIN) return
+        val body = rsp.optJSONObject("response")?.optJSONObject("body") ?: return
+        val items = body.optJSONArray("items") ?: return
+
+        val today = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Seoul")
+        }.format(Date())
+
+        var todayCount = 0
+        var delayCount = 0
+        var cancelCount = 0
+        val compact = JSONArray()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val sched = icnField(item, "scheduleDateTime")
+            if (!sched.startsWith(today)) continue
+            todayCount++
+            val remark = icnField(item, "remark")
+            if (remark == "지연") delayCount++
+            if (remark == "결항") cancelCount++
+            if (compact.length() < ICN_DISPLAY_LIMIT) {
+                val c = JSONObject()
+                c.put("flightId", icnField(item, "flightId"))
+                c.put("airline", icnField(item, "airline"))
+                c.put("airport", icnField(item, "airport"))
+                c.put("time", if (sched.length >= 12) sched.substring(8, 12) else "")
+                c.put("remark", remark.ifBlank { "예정" })
+                c.put("terminalid", icnField(item, "terminalid").ifBlank { "-" })
+                c.put("gatenumber", icnField(item, "gatenumber").ifBlank { "-" })
+                compact.put(c)
+            }
+        }
+        body.put("items", compact)
+        body.put("오늘전체", todayCount)
+        body.put("오늘지연", delayCount)
+        body.put("오늘결항", cancelCount)
     }
 
     /** JSONObject/JSONArray를 재귀로 훑으며 모든 문자열 값에 [deserialPath]를 적용한다. */
