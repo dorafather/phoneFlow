@@ -114,18 +114,23 @@ class MainActivity : ComponentActivity() {
 
     /**
      * rest.sce/addr.ini는 RUNFLOW()가 현재 작업 디렉터리(= nativeInit에 넘긴
-     * baseDir, 즉 filesDir) 기준 상대경로로 읽으므로, 앱 번들 안의 assets에서
-     * 매번(덮어쓰기) filesDir로 복사해둔다 - 이번 범위는 REST 모듈/Compose UI
-     * 검증용 최소 테스트 시나리오이고 사용자 커스터마이즈 개념이 아직 없으므로
-     * 단순히 항상 최신 asset으로 덮어쓴다.
+     * baseDir, 즉 filesDir) 기준 상대경로로 읽는다. filesDir에 이미 파일이
+     * 있으면 건드리지 않는다 - addr.ini는 사용자가 채운 서비스키와 채팅
+     * 명령(관심종목 추가 등)이 함수.설정저장(SETINI)으로 실제로 써넣는
+     * 대상이라, 매 실행마다 덮어쓰면 그 전부가 다음 실행 때 사라진다
+     * (최초 설치 후 앱 실행 시 1회만 복사 - NotebookFlow의
+     * addr.ini.template가 addr.ini를 최초 1회만 생성하고 이후 절대
+     * 덮어쓰지 않는 것과 동일한 원칙).
      */
     private fun copyAssetScenarioFiles() {
         for (name in listOf("addr.ini", "rest.sce")) {
+            val dest = File(filesDir, name)
+            if (dest.exists()) continue
             assets.open(name).use { input ->
-                File(filesDir, name).outputStream().use { output -> input.copyTo(output) }
+                dest.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        Log.i(TAG, "테스트 시나리오(addr.ini/rest.sce) 복사 완료 -> ${filesDir.absolutePath}")
+        Log.i(TAG, "시나리오(addr.ini/rest.sce) 준비 완료 -> ${filesDir.absolutePath}")
     }
 
     private fun sendChatInput(text: String) {
