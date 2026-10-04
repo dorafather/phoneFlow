@@ -51,7 +51,7 @@ fun ScenarioViewerScreen(filesDir: File) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    "rest.sce - 총 ${lines.size}줄 (읽기 전용)",
+                    "한글 시나리오 내용 - 총 ${lines.size}줄 (읽기 전용)",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Button(onClick = { lines = readScenarioLines(filesDir) }) {
@@ -87,6 +87,6 @@ fun ScenarioViewerScreen(filesDir: File) {
 
 private fun readScenarioLines(filesDir: File): List<Pair<Int, String>> {
     val f = File(filesDir, "rest.sce")
-    if (!f.exists()) return listOf(1 to "(rest.sce 파일을 찾을 수 없습니다)")
+    if (!f.exists()) return listOf(1 to "(한글 시나리오 내용을 찾을 수 없습니다)")
     return f.readLines(Charsets.UTF_8).mapIndexed { idx, line -> (idx + 1) to line }
 }

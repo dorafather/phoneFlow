@@ -236,7 +236,7 @@ private fun AppRoot(
                         Text(
                             when (screen) {
                                 Screen.SETTINGS -> "설정"
-                                Screen.SCENARIO -> "rest.sce"
+                                Screen.SCENARIO -> "한글 시나리오 내용"
                                 Screen.CHAT -> "phoneFlow"
                             }
                         )
@@ -396,7 +396,7 @@ private fun CommandDrawerContent(
                 .clickableCompat { onSettingsPicked() }
         )
         Text(
-            "📄 rest.sce 보기",
+            "📄 한글 시나리오 내용 보기",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
                 .fillMaxWidth()
