@@ -176,7 +176,12 @@ class MainActivity : ComponentActivity() {
     private fun extractDisplayText(json: JSONObject): String {
         // 핑 테스트 결과("봇응답" 이벤트, text 필드)와 그 외 메시지 모두
         // 안전하게 사람이 읽을 수 있는 형태로 보여준다.
-        if (json.has("text")) return json.optString("text")
+        // rest.sce는 처리::/문장:: 한 줄 제약 때문에 소스에 실제 개행 문자를
+        // 넣을 방법이 없어 여러 줄을 "|"로 이어 붙인다(모든 서비스 공통
+        // 관례) - 그 구분자를 폰 화면에 그대로 보여주지 않고, 표시 직전에만
+        // 실제 줄바꿈으로 바꿔준다(Compose Text는 기본으로 "\n"을 줄바꿈으로
+        // 렌더링함) - rest.sce/엔진 쪽은 전혀 안 건드림.
+        if (json.has("text")) return json.optString("text").replace("|", "\n")
         return json.toString()
     }
 }
