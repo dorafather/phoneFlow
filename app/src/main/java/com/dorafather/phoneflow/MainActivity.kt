@@ -59,7 +59,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS }
+private enum class Screen { CHAT, SETTINGS, SCENARIO }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -220,6 +220,10 @@ private fun AppRoot(
                     onSettingsPicked = {
                         screen = Screen.SETTINGS
                         scope.launch { drawerState.close() }
+                    },
+                    onScenarioPicked = {
+                        screen = Screen.SCENARIO
+                        scope.launch { drawerState.close() }
                     }
                 )
             }
@@ -228,7 +232,15 @@ private fun AppRoot(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (screen == Screen.SETTINGS) "설정" else "phoneFlow") },
+                    title = {
+                        Text(
+                            when (screen) {
+                                Screen.SETTINGS -> "설정"
+                                Screen.SCENARIO -> "rest.sce"
+                                Screen.CHAT -> "phoneFlow"
+                            }
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Filled.Menu, contentDescription = "메뉴")
@@ -249,6 +261,7 @@ private fun AppRoot(
                         }
                     )
                     Screen.SETTINGS -> SettingsScreen(filesDir = filesDir)
+                    Screen.SCENARIO -> ScenarioViewerScreen(filesDir = filesDir)
                 }
             }
         }
@@ -282,7 +295,8 @@ private fun CommandDrawerContent(
     groups: List<CommandGroup>,
     filesDir: File,
     onCommandPicked: (String) -> Unit,
-    onSettingsPicked: () -> Unit
+    onSettingsPicked: () -> Unit,
+    onScenarioPicked: () -> Unit
 ) {
     val expanded = remember { mutableStateListOf<String>() }
     val expandedQueries = remember { mutableStateListOf<String>() }
@@ -380,6 +394,14 @@ private fun CommandDrawerContent(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
                 .clickableCompat { onSettingsPicked() }
+        )
+        Text(
+            "📄 rest.sce 보기",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clickableCompat { onScenarioPicked() }
         )
     }
 }
