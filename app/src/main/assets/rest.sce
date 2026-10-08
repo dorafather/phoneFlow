@@ -75,8 +75,8 @@
 공휴일 [월] - 해당 월 공휴일 조회
 실거래가 - 이번 달 기본 지역 아파트 실거래가 조회
 실거래가 [계약년월] - 해당 월 기본 지역 실거래가 조회
-실거래가 [지역명] [계약년월] - 해당 지역/월 실거래가 조회
-실거래가 지역추가 [지역명] - 관심지역 등록(최대 5개, 서울 25개구)
+실거래가 [지역명] [계약년월] - 해당 지역/월 실거래가 조회(이미 등록된 지역명만 가능)
+실거래가 지역추가 [지역명] - 관심지역 등록(최대 5개, 전국 시군구 - 드로워 > 실거래가 > 지역 추가에서 검색)
 실거래가 지역삭제 [지역명] - 관심지역 해제
 실거래가 지역조회 - 등록된 관심지역 목록 조회
 인천공항 도착 - 인천공항 오늘 도착편 요약(상위 5건)
@@ -2614,109 +2614,42 @@ $$$세션.keco_watch_alert_text$$$}
 }
 처리::MOLIT.MOLIT지역코드조회
 {
-  만약에(세션.molit_lookup_name == 종로구)
-    함수.저장(molit_lookup_code,11110)
+  만약에(참)
+    함수.쪼개기(molit_name_code_parts,세션.molit_lookup_name,@)
+    처리.MOLIT지역코드파싱분기
+}
+처리::MOLIT.MOLIT지역코드파싱분기
+{
+  만약에(세션.리스트.molit_name_code_parts.SIZE == 2)
+    함수.저장(molit_lookup_name,세션.리스트.molit_name_code_parts[0])
+    함수.저장(molit_lookup_code,세션.리스트.molit_name_code_parts[1])
     함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 중구)
-    함수.저장(molit_lookup_code,11140)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 용산구)
-    함수.저장(molit_lookup_code,11170)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 성동구)
-    함수.저장(molit_lookup_code,11200)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 광진구)
-    함수.저장(molit_lookup_code,11215)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 동대문구)
-    함수.저장(molit_lookup_code,11230)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 중랑구)
-    함수.저장(molit_lookup_code,11260)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 성북구)
-    함수.저장(molit_lookup_code,11290)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 강북구)
-    함수.저장(molit_lookup_code,11305)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 도봉구)
-    함수.저장(molit_lookup_code,11320)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 노원구)
-    함수.저장(molit_lookup_code,11350)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 은평구)
-    함수.저장(molit_lookup_code,11380)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 서대문구)
-    함수.저장(molit_lookup_code,11410)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 마포구)
-    함수.저장(molit_lookup_code,11440)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 양천구)
-    함수.저장(molit_lookup_code,11470)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 강서구)
-    함수.저장(molit_lookup_code,11500)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 구로구)
-    함수.저장(molit_lookup_code,11530)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 금천구)
-    함수.저장(molit_lookup_code,11545)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 영등포구)
-    함수.저장(molit_lookup_code,11560)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 동작구)
-    함수.저장(molit_lookup_code,11590)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 관악구)
-    함수.저장(molit_lookup_code,11620)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 서초구)
-    함수.저장(molit_lookup_code,11650)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 강남구)
-    함수.저장(molit_lookup_code,11680)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 송파구)
-    함수.저장(molit_lookup_code,11710)
-    함수.저장(molit_lookup_found,1)
-    처리.MOLIT지역코드조회완료
-  그외그외(세션.molit_lookup_name == 강동구)
-    함수.저장(molit_lookup_code,11740)
-    함수.저장(molit_lookup_found,1)
+    함수.저장(molit_target_name,세션.molit_lookup_name)
     처리.MOLIT지역코드조회완료
   그외
+    함수.쪼개기(molit_watch_lookup_list,세션.molit_watch_csv,|)
+    함수.저장(molit_watch_lookup_idx,0)
+    처리.MOLIT지역코드왓치리스트검색
+}
+처리::MOLIT.MOLIT지역코드왓치리스트검색
+{
+  만약에(세션.molit_watch_lookup_idx >= 세션.리스트.molit_watch_lookup_list.SIZE)
     함수.저장(molit_lookup_found,0)
     처리.MOLIT지역코드조회완료
+  그외
+    함수.쪼개기(molit_watch_lookup_parts,세션.리스트.molit_watch_lookup_list[세션.molit_watch_lookup_idx],:)
+    처리.MOLIT지역코드왓치리스트항목검사
+}
+처리::MOLIT.MOLIT지역코드왓치리스트항목검사
+{
+  만약에(세션.리스트.molit_watch_lookup_parts[0] == 세션.molit_lookup_name)
+    함수.저장(molit_lookup_code,세션.리스트.molit_watch_lookup_parts[1])
+    함수.저장(molit_lookup_found,1)
+    함수.저장(molit_target_name,세션.molit_lookup_name)
+    처리.MOLIT지역코드조회완료
+  그외
+    함수.더하기(molit_watch_lookup_idx,세션.molit_watch_lookup_idx,1)
+    처리.MOLIT지역코드왓치리스트검색
 }
 처리::MOLIT.MOLIT지역코드조회완료
 {
@@ -2961,7 +2894,7 @@ $$$세션.keco_watch_alert_text$$$}
 문장::TELEGRAM.MOLIT파싱실패문장
 {계약년월 형식을 이해하지 못했습니다. "실거래가" 또는 "실거래가 202410"처럼 말씀해주세요.}
 문장::TELEGRAM.MOLIT지역미지원문장
-{$$$세션.molit_lookup_name$$$은(는) 아직 지원하지 않는 지역입니다.}
+{$$$세션.molit_lookup_name$$$은(는) 찾을 수 없습니다. 드로워 > 실거래가 > 지역 추가에서 검색해 등록해보세요.}
 문장::TELEGRAM.MOLIT관심지역추가완료문장
 {$$$세션.molit_target_name$$$($$$세션.molit_resolved_code$$$)를 관심지역에 추가했습니다.}
 문장::TELEGRAM.MOLIT관심지역추가한도초과문장
@@ -2971,7 +2904,7 @@ $$$세션.keco_watch_alert_text$$$}
 문장::TELEGRAM.MOLIT관심지역삭제실패문장
 {$$$세션.molit_target_name$$$은(는) 등록된 관심지역이 아닙니다.}
 문장::TELEGRAM.MOLIT관심지역빈목록문장
-{등록된 관심지역이 없습니다. "실거래가 지역추가 강남구"처럼 말씀해주세요.}
+{등록된 관심지역이 없습니다. 드로워 > 실거래가 > 지역 추가에서 검색해 등록해보세요.}
 문장::TELEGRAM.MOLIT관심지역목록문장
 {등록된 관심지역: $$$세션.molit_list_lines$$$}
 문장::MOLIT.MOLIT지역목록라인문장

@@ -59,7 +59,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS, SCENARIO }
+private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -154,7 +154,11 @@ class MainActivity : ComponentActivity() {
      * 덮어쓰지 않는 것과 동일한 원칙).
      */
     private fun copyAssetScenarioFiles() {
-        for (name in listOf("addr.ini", "rest.sce")) {
+        // lawd_codes.db(법정동코드 검색용, 읽기 전용 정적 데이터)도 같은 "최초 1회만
+        // 복사" 규칙을 따른다 - addr.ini/rest.sce와 달리 이 파일은 앱이 직접 쓰지는
+        // 않지만, 업데이트 시 새 데이터로 갱신하려면 앱 데이터 초기화가 필요하다는
+        // 점은 동일한 제약(2026-10 rest.sce 교체 때와 같은 이유).
+        for (name in listOf("addr.ini", "rest.sce", "lawd_codes.db")) {
             val dest = File(filesDir, name)
             if (dest.exists()) continue
             assets.open(name).use { input ->
@@ -209,6 +213,7 @@ private fun AppRoot(
                 CommandDrawerContent(
                     groups = commandGroups,
                     filesDir = filesDir,
+                    isDrawerOpen = drawerState.isOpen,
                     onCommandPicked = { insert ->
                         // "입력창에 이미 글자가 있어도 덮어쓴다"(업무지침 1절) -
                         // 이어붙이면 "주식 관심종목 추가 기상청 날씨"처럼 문자열이
@@ -224,6 +229,10 @@ private fun AppRoot(
                     onScenarioPicked = {
                         screen = Screen.SCENARIO
                         scope.launch { drawerState.close() }
+                    },
+                    onLawdPickerRequested = {
+                        screen = Screen.LAWD_PICKER
+                        scope.launch { drawerState.close() }
                     }
                 )
             }
@@ -237,6 +246,7 @@ private fun AppRoot(
                             when (screen) {
                                 Screen.SETTINGS -> "설정"
                                 Screen.SCENARIO -> "한글 시나리오 내용"
+                                Screen.LAWD_PICKER -> "지역 검색"
                                 Screen.CHAT -> "phoneFlow"
                             }
                         )
@@ -262,6 +272,13 @@ private fun AppRoot(
                     )
                     Screen.SETTINGS -> SettingsScreen(filesDir = filesDir)
                     Screen.SCENARIO -> ScenarioViewerScreen(filesDir = filesDir)
+                    Screen.LAWD_PICKER -> LawdPickerScreen(filesDir = filesDir) { nameCodeToken ->
+                        // 지역추가 ONE 경로만 연결한다(2026-10-08 요청 범위) - "실거래가
+                        // [지역명] [계약년월]" 1회성 조회는 이 화면과 연결하지 않았다.
+                        val insert = "실거래가 지역추가 $nameCodeToken"
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        screen = Screen.CHAT
+                    }
                 }
             }
         }
@@ -294,9 +311,19 @@ private val ITEM_QUERY_TEMPLATES: Map<String, (String) -> String> = mapOf(
 private fun CommandDrawerContent(
     groups: List<CommandGroup>,
     filesDir: File,
+    // "지역 조회" 하위트리의 등록 항목 목록(WatchlistStore.itemNamesForGroup)이
+    // addr.ini를 즉시 읽긴 하지만, 드로워를 닫았다 다시 열기만 해서는 그 값을
+    // 읽는 LazyColumn item 블록이 재실행되지 않아(expanded/expandedQueries
+    // 상태가 안 바뀌어 recomposition 트리거가 없음) 새로 등록한 지역이 안
+    // 보이는 채로 멈춰 있었다(2026-10-08 전국 검색 기능 검증 중 발견 - 접었다
+    // 펼치면 바로 반영되는 것으로 원인 확인). 파라미터 값 자체가 호출마다
+    // 바뀌면 이 함수 전체가 스킵되지 않고 다시 실행되므로, 쓰이진 않아도 이
+    // 파라미터로 드로워가 열릴 때마다 강제 재조회시킨다.
+    isDrawerOpen: Boolean,
     onCommandPicked: (String) -> Unit,
     onSettingsPicked: () -> Unit,
-    onScenarioPicked: () -> Unit
+    onScenarioPicked: () -> Unit,
+    onLawdPickerRequested: () -> Unit
 ) {
     val expanded = remember { mutableStateListOf<String>() }
     val expandedQueries = remember { mutableStateListOf<String>() }
@@ -370,6 +397,20 @@ private fun CommandDrawerContent(
                                         }
                                     }
                                 }
+                            }
+                        } else if (group.label == "실거래가" && cmd.label == "지역 추가") {
+                            // 전국 법정동 검색+선택 화면으로 보낸다(2026-10-08 요청) -
+                            // 서울 25개구 하드코딩 대신 법정동코드 DB를 검색해서 고르면
+                            // 입력창에 "이름@코드"가 채워진다(rest.sce가 바로 쓸 수 있는
+                            // 형태 - LawdPickerScreen 주석 참고).
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onLawdPickerRequested() }
+                                )
                             }
                         } else {
                             item(key = "item-${group.label}-${cmd.label}") {
