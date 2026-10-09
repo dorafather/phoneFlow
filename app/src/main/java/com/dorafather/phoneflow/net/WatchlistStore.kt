@@ -37,7 +37,11 @@ object WatchlistStore {
         "주식" to Category("주식 관심종목", "KRX_WATCHLIST", "종목"),
     )
 
-    /** "강남구:11680"/"삼성전자:005930"처럼 코드가 붙은 값은 조회 명령에 쓸 이름만 돌려준다. */
+    /**
+     * "강남구:11680"/"삼성전자:005930"(콜론 구분, MOLIT/주식 등)과 "서울특별시
+     * 종로구 청운효자동@61@126"(골뱅이 구분, 기상청 전국 격자 - 2026-10-09 추가)
+     * 둘 다 코드가 붙은 값에서 조회 명령에 쓸 이름만 돌려준다.
+     */
     fun itemNamesForGroup(filesDir: File, groupLabel: String): List<String> {
         val cat = GROUP_LABEL_TO_CATEGORY[groupLabel] ?: return emptyList()
         val f = File(filesDir, "addr.ini")
@@ -47,6 +51,7 @@ object WatchlistStore {
             section["${cat.slotPrefix}$i"]?.trim()
                 ?.takeIf { it.isNotEmpty() && it != EMPTY_SLOT }
                 ?.substringBefore(":")
+                ?.substringBefore("@")
         }
     }
 

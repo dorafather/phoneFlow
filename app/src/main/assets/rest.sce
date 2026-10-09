@@ -64,7 +64,7 @@
 주식 관심종목 삭제 [종목명] - 관심종목 해제
 주식 시세 [종목명] - 등록된 관심종목 중 하나만 시세 조회
 기상청 날씨 [지역] - 단기예보 조회(지역 생략 시 기본 지역)
-기상청 지역 추가 [지역] - 관심지역 등록(최대 5개)
+기상청 지역 추가 [지역] - 관심지역 등록(최대 5개, 서울/부산/대구/인천/광주/대전/울산/세종/수원/제주는 바로 가능, 그 외 전국은 드로워 > 기상청 > 지역 추가에서 검색)
 기상청 지역 삭제 [지역] - 관심지역 해제
 기상청 지역 조회 - 등록된 관심지역 전체 날씨 조회
 미세먼지 [지역] - 대기질 조회(지역 생략 시 기본 지역)
@@ -822,52 +822,8 @@ $$$세션.krx_watch_alert_text$$$}
   만약에(참)
     함수.단어분리(kma_add_word_list,세션.kma_region_rest)
     함수.단어합치기(kma_target_name,세션.리스트.kma_add_word_list,1)
-    처리.KMA지역명검증
-}
-처리::KMA.KMA지역명검증
-{
-  만약에(세션.kma_target_name == 서울)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 부산)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 대구)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 인천)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 광주)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 대전)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 울산)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 세종)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 수원)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외그외(세션.kma_target_name == 제주)
-    함수.저장(kma_region_found,1)
-    처리.KMA지역추가확정
-  그외
-    함수.저장(kma_region_found,0)
-    처리.KMA지역추가확정
-}
-처리::KMA.KMA지역추가확정
-{
-  만약에(세션.kma_region_found == 0)
-    함수.저장(kma_reply_text,문장.KMA지역미지원문장)
-    전송.기상청응답전송
-  그외
-    함수.저장(kma_ini_found,0)
-    처리.KMA지역ini빈슬롯찾기1
+    함수.저장(kma_mode,추가)
+    처리.KMA지역좌표확인
 }
 처리::KMA.KMA지역ini빈슬롯찾기1
 {
@@ -937,7 +893,7 @@ $$$세션.krx_watch_alert_text$$$}
 처리::KMA.KMA지역ini쓰기
 {
   만약에(세션.kma_ini_found == 1)
-    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_target_name)
+    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_write_value)
     처리.KMA지역추가세션갱신
   그외
     함수.저장(kma_reply_text,문장.KMA지역추가한도초과문장)
@@ -946,11 +902,11 @@ $$$세션.krx_watch_alert_text$$$}
 처리::KMA.KMA지역추가세션갱신
 {
   만약에(세션.kma_watch_csv == 없음)
-    함수.저장(kma_watch_csv,세션.kma_target_name)
+    함수.저장(kma_watch_csv,세션.kma_ini_write_value)
     함수.저장(kma_reply_text,문장.KMA지역추가완료문장)
     전송.기상청응답전송
   그외
-    함수.붙이기(kma_watch_csv,세션.kma_ini_pipe,세션.kma_target_name)
+    함수.붙이기(kma_watch_csv,세션.kma_ini_pipe,세션.kma_ini_write_value)
     함수.저장(kma_reply_text,문장.KMA지역추가완료문장)
     전송.기상청응답전송
 }
@@ -959,6 +915,8 @@ $$$세션.krx_watch_alert_text$$$}
   만약에(참)
     함수.단어분리(kma_del_word_list,세션.kma_region_rest)
     함수.단어합치기(kma_target_name,세션.리스트.kma_del_word_list,1)
+    함수.저장(kma_del_match_prefix,세션.kma_target_name)
+    함수.붙이기(kma_del_match_prefix,@)
     함수.쪼개기(kma_watch_list,세션.kma_watch_csv,|)
     함수.저장(kma_del_idx,0)
     함수.저장(kma_del_found,0)
@@ -976,6 +934,10 @@ $$$세션.krx_watch_alert_text$$$}
 처리::KMA.KMA지역삭제항목검사
 {
   만약에(세션.리스트.kma_watch_list[세션.kma_del_idx] == 세션.kma_target_name)
+    함수.더하기(kma_del_found,세션.kma_del_found,1)
+    함수.더하기(kma_del_idx,세션.kma_del_idx,1)
+    처리.KMA지역삭제순회
+  그외그외(세션.리스트.kma_watch_list[세션.kma_del_idx] === 세션.kma_del_match_prefix)
     함수.더하기(kma_del_found,세션.kma_del_found,1)
     함수.더하기(kma_del_idx,세션.kma_del_idx,1)
     처리.KMA지역삭제순회
@@ -1011,12 +973,22 @@ $$$세션.krx_watch_alert_text$$$}
     함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
     함수.저장(kma_ini_del_found,1)
     처리.KMA지역ini삭제찾기2
+  그외그외(설정.KMA_WATCHLIST.지역1 === 세션.kma_del_match_prefix) 그리고(세션.kma_ini_del_found != 1)
+    함수.저장(kma_ini_slot_key,지역1)
+    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
+    함수.저장(kma_ini_del_found,1)
+    처리.KMA지역ini삭제찾기2
   그외
     처리.KMA지역ini삭제찾기2
 }
 처리::KMA.KMA지역ini삭제찾기2
 {
   만약에(설정.KMA_WATCHLIST.지역2 == 세션.kma_target_name) 그리고(세션.kma_ini_del_found != 1)
+    함수.저장(kma_ini_slot_key,지역2)
+    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
+    함수.저장(kma_ini_del_found,1)
+    처리.KMA지역ini삭제찾기3
+  그외그외(설정.KMA_WATCHLIST.지역2 === 세션.kma_del_match_prefix) 그리고(세션.kma_ini_del_found != 1)
     함수.저장(kma_ini_slot_key,지역2)
     함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
     함수.저장(kma_ini_del_found,1)
@@ -1031,12 +1003,22 @@ $$$세션.krx_watch_alert_text$$$}
     함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
     함수.저장(kma_ini_del_found,1)
     처리.KMA지역ini삭제찾기4
+  그외그외(설정.KMA_WATCHLIST.지역3 === 세션.kma_del_match_prefix) 그리고(세션.kma_ini_del_found != 1)
+    함수.저장(kma_ini_slot_key,지역3)
+    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
+    함수.저장(kma_ini_del_found,1)
+    처리.KMA지역ini삭제찾기4
   그외
     처리.KMA지역ini삭제찾기4
 }
 처리::KMA.KMA지역ini삭제찾기4
 {
   만약에(설정.KMA_WATCHLIST.지역4 == 세션.kma_target_name) 그리고(세션.kma_ini_del_found != 1)
+    함수.저장(kma_ini_slot_key,지역4)
+    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
+    함수.저장(kma_ini_del_found,1)
+    처리.KMA지역ini삭제찾기5
+  그외그외(설정.KMA_WATCHLIST.지역4 === 세션.kma_del_match_prefix) 그리고(세션.kma_ini_del_found != 1)
     함수.저장(kma_ini_slot_key,지역4)
     함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
     함수.저장(kma_ini_del_found,1)
@@ -1050,6 +1032,10 @@ $$$세션.krx_watch_alert_text$$$}
     함수.저장(kma_ini_slot_key,지역5)
     함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
     처리.KMA지역삭제응답
+  그외그외(설정.KMA_WATCHLIST.지역5 === 세션.kma_del_match_prefix) 그리고(세션.kma_ini_del_found != 1)
+    함수.저장(kma_ini_slot_key,지역5)
+    함수.설정저장(세션.kma_ini_category,세션.kma_ini_slot_key,세션.kma_ini_clear_value)
+    처리.KMA지역삭제응답
   그외
     처리.KMA지역삭제응답
 }
@@ -1060,6 +1046,23 @@ $$$세션.krx_watch_alert_text$$$}
     전송.기상청응답전송
 }
 처리::KMA.KMA지역좌표확인
+{
+  만약에(참)
+    함수.쪼개기(kma_coord_parts,세션.kma_target_name,@)
+    처리.KMA지역좌표분기
+}
+처리::KMA.KMA지역좌표분기
+{
+  만약에(세션.리스트.kma_coord_parts.SIZE == 3)
+    함수.저장(kma_target_name,세션.리스트.kma_coord_parts[0])
+    함수.저장(kma_nx,세션.리스트.kma_coord_parts[1])
+    함수.저장(kma_ny,세션.리스트.kma_coord_parts[2])
+    함수.저장(kma_region_found,1)
+    처리.KMA지역확인완료
+  그외
+    처리.KMA지역좌표확인_도시표
+}
+처리::KMA.KMA지역좌표확인_도시표
 {
   만약에(세션.kma_target_name == 서울)
     함수.저장(kma_nx,60)
@@ -1112,19 +1115,87 @@ $$$세션.krx_watch_alert_text$$$}
     함수.저장(kma_region_found,1)
     처리.KMA지역확인완료
   그외
+    처리.KMA지역좌표확인_왓치리스트검색
+}
+처리::KMA.KMA지역좌표확인_왓치리스트검색
+{
+  만약에(참)
+    함수.쪼개기(kma_watch_lookup_list,세션.kma_watch_csv,|)
+    함수.저장(kma_watch_lookup_idx,0)
+    처리.KMA지역좌표확인_왓치리스트순회
+}
+처리::KMA.KMA지역좌표확인_왓치리스트순회
+{
+  만약에(세션.kma_watch_lookup_idx >= 세션.리스트.kma_watch_lookup_list.SIZE)
     함수.저장(kma_region_found,0)
     처리.KMA지역확인완료
+  그외
+    함수.쪼개기(kma_watch_lookup_parts,세션.리스트.kma_watch_lookup_list[세션.kma_watch_lookup_idx],@)
+    처리.KMA지역좌표확인_왓치리스트항목검사
+}
+처리::KMA.KMA지역좌표확인_왓치리스트항목검사
+{
+  만약에(세션.리스트.kma_watch_lookup_parts[0] == 세션.kma_target_name) 그리고(세션.리스트.kma_watch_lookup_parts.SIZE == 3)
+    함수.저장(kma_nx,세션.리스트.kma_watch_lookup_parts[1])
+    함수.저장(kma_ny,세션.리스트.kma_watch_lookup_parts[2])
+    함수.저장(kma_region_found,1)
+    처리.KMA지역확인완료
+  그외
+    함수.더하기(kma_watch_lookup_idx,세션.kma_watch_lookup_idx,1)
+    처리.KMA지역좌표확인_왓치리스트순회
 }
 처리::KMA.KMA지역확인완료
 {
-  만약에(세션.kma_region_found == 0) 그리고(세션.kma_mode == 조회단건)
+  만약에(세션.kma_region_found == 0) 그리고(세션.kma_mode == 추가)
+    함수.저장(kma_reply_text,문장.KMA지역미지원문장)
+    전송.기상청응답전송
+  그외그외(세션.kma_region_found == 0) 그리고(세션.kma_mode == 조회단건)
     함수.저장(kma_reply_text,문장.KMA지역미지원문장)
     전송.기상청응답전송
   그외그외(세션.kma_region_found == 0)
     함수.더하기(kma_walk_idx,세션.kma_walk_idx,1)
     처리.KMA관심지역순회다음
+  그외그외(세션.kma_mode == 추가)
+    처리.KMA관심지역중복검사
   그외
     처리.KMA시각계산
+}
+처리::KMA.KMA관심지역중복검사
+{
+  만약에(참)
+    함수.쪼개기(kma_dup_check_list,세션.kma_watch_csv,|)
+    함수.저장(kma_dup_check_idx,0)
+    함수.저장(kma_dup_found,0)
+    처리.KMA관심지역중복검사순회
+}
+처리::KMA.KMA관심지역중복검사순회
+{
+  만약에(세션.kma_dup_check_idx >= 세션.리스트.kma_dup_check_list.SIZE)
+    처리.KMA관심지역중복검사완료
+  그외
+    함수.쪼개기(kma_dup_check_parts,세션.리스트.kma_dup_check_list[세션.kma_dup_check_idx],@)
+    처리.KMA관심지역중복검사항목
+}
+처리::KMA.KMA관심지역중복검사항목
+{
+  만약에(세션.리스트.kma_dup_check_parts[0] == 세션.kma_target_name)
+    함수.저장(kma_dup_found,1)
+    처리.KMA관심지역중복검사완료
+  그외
+    함수.더하기(kma_dup_check_idx,세션.kma_dup_check_idx,1)
+    처리.KMA관심지역중복검사순회
+}
+처리::KMA.KMA관심지역중복검사완료
+{
+  만약에(세션.kma_dup_found == 1)
+    함수.저장(kma_reply_text,문장.KMA관심지역중복문장)
+    전송.기상청응답전송
+  그외
+    함수.저장(kma_ini_write_value,세션.kma_target_name)
+    함수.붙이기(kma_ini_write_value,@,세션.kma_nx)
+    함수.붙이기(kma_ini_write_value,@,세션.kma_ny)
+    함수.저장(kma_ini_found,0)
+    처리.KMA지역ini빈슬롯찾기1
 }
 처리::KMA.KMA시각계산
 {
@@ -1376,7 +1447,9 @@ $$$세션.krx_watch_alert_text$$$}
 {[기상청 날씨 알림] 강수확률 $$$설정.KMA.threshold$$$% 이상 또는 비/눈 예보가 있는 관심지역이 있습니다.
 $$$세션.kma_watch_alert_text$$$}
 문장::TELEGRAM.KMA지역미지원문장
-{"$$$세션.kma_target_name$$$"은(는) 아직 지원하지 않는 지역입니다. 지원 지역: 서울, 부산, 대구, 인천, 광주, 대전, 울산, 세종, 수원, 제주}
+{"$$$세션.kma_target_name$$$"은(는) 아직 지원하지 않는 지역입니다. 서울, 부산, 대구, 인천, 광주, 대전, 울산, 세종, 수원, 제주는 바로 등록 가능하고, 그 외 지역은 드로워 > 기상청 > 지역 추가에서 검색해 등록해보세요.}
+문장::TELEGRAM.KMA관심지역중복문장
+{$$$세션.kma_target_name$$$은(는) 이미 관심지역에 등록되어 있습니다.}
 문장::TELEGRAM.KMA지역추가완료문장
 {$$$세션.kma_target_name$$$을(를) 관심지역에 추가했습니다. 매일 $$$설정.KMA.alert_hour$$$시경 강수확률 $$$설정.KMA.threshold$$$% 이상 또는 비/눈 예보 시 알려드립니다.}
 문장::TELEGRAM.KMA지역삭제완료문장

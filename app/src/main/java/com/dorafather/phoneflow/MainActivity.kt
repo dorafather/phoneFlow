@@ -59,7 +59,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER }
+private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER, KMA_PICKER }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
         // 복사" 규칙을 따른다 - addr.ini/rest.sce와 달리 이 파일은 앱이 직접 쓰지는
         // 않지만, 업데이트 시 새 데이터로 갱신하려면 앱 데이터 초기화가 필요하다는
         // 점은 동일한 제약(2026-10 rest.sce 교체 때와 같은 이유).
-        for (name in listOf("addr.ini", "rest.sce", "lawd_codes.db")) {
+        for (name in listOf("addr.ini", "rest.sce", "lawd_codes.db", "kma_grid.db")) {
             val dest = File(filesDir, name)
             if (dest.exists()) continue
             assets.open(name).use { input ->
@@ -233,6 +233,10 @@ private fun AppRoot(
                     onLawdPickerRequested = {
                         screen = Screen.LAWD_PICKER
                         scope.launch { drawerState.close() }
+                    },
+                    onKmaPickerRequested = {
+                        screen = Screen.KMA_PICKER
+                        scope.launch { drawerState.close() }
                     }
                 )
             }
@@ -247,6 +251,7 @@ private fun AppRoot(
                                 Screen.SETTINGS -> "설정"
                                 Screen.SCENARIO -> "한글 시나리오 내용"
                                 Screen.LAWD_PICKER -> "지역 검색"
+                                Screen.KMA_PICKER -> "지역 검색"
                                 Screen.CHAT -> "phoneFlow"
                             }
                         )
@@ -276,6 +281,13 @@ private fun AppRoot(
                         // 지역추가 ONE 경로만 연결한다(2026-10-08 요청 범위) - "실거래가
                         // [지역명] [계약년월]" 1회성 조회는 이 화면과 연결하지 않았다.
                         val insert = "실거래가 지역추가 $nameCodeToken"
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        screen = Screen.CHAT
+                    }
+                    Screen.KMA_PICKER -> KmaPickerScreen(filesDir = filesDir) { nameNxNyToken ->
+                        // 기상청은 "지역추가"가 아니라 "지역 추가"(공백 있음) 문법이다
+                        // (rest.sce 기존 관례 그대로 유지 - MOLIT과 다름).
+                        val insert = "기상청 지역 추가 $nameNxNyToken"
                         input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
@@ -323,7 +335,8 @@ private fun CommandDrawerContent(
     onCommandPicked: (String) -> Unit,
     onSettingsPicked: () -> Unit,
     onScenarioPicked: () -> Unit,
-    onLawdPickerRequested: () -> Unit
+    onLawdPickerRequested: () -> Unit,
+    onKmaPickerRequested: () -> Unit
 ) {
     val expanded = remember { mutableStateListOf<String>() }
     val expandedQueries = remember { mutableStateListOf<String>() }
@@ -410,6 +423,21 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onLawdPickerRequested() }
+                                )
+                            }
+                        } else if (group.label == "기상청" && cmd.label == "지역 추가") {
+                            // 기상청 단기예보 격자(nx,ny) 전국 검색 화면으로 보낸다
+                            // (2026-10-09 요청 - 법정동코드와 같은 행정구역코드 체계를
+                            // 쓰는 걸 발견, MOLIT와 동일한 패턴으로 추가). 서울/부산 등
+                            // 17개 주요도시 하드코딩은 간단한 입력 편의로 그대로 남겨뒀고,
+                            // 이 화면은 그 외 전국 읍면동 단위 등록을 위한 것.
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onKmaPickerRequested() }
                                 )
                             }
                         } else {
