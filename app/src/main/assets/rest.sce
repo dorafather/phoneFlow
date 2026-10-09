@@ -12,6 +12,7 @@
   KMA_SPCD.수신메시지.응답코드 == 200    처리.KMASPCD응답분기처리
   MOLIT.수신메시지.응답코드 == 200    처리.MOLIT응답분기처리
   ICN.수신메시지.응답코드 == 200    처리.ICN응답분기처리
+  TOUR.수신메시지.응답코드 == 200    처리.TOUR응답분기처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -24,6 +25,8 @@
     함수.앞자리비교(cmd_공휴일,세션.chat_input_text,공휴일)
     함수.앞자리비교(cmd_실거래가,세션.chat_input_text,실거래가)
     함수.앞자리비교(cmd_인천공항,세션.chat_input_text,인천공항)
+    함수.앞자리비교(cmd_행사,세션.chat_input_text,행사)
+    함수.앞자리비교(cmd_주변행사,세션.chat_input_text,주변행사)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -42,6 +45,10 @@
     처리.텔레그램실거래가명령처리
   그외그외(세션.cmd_인천공항 == 1)
     처리.텔레그램인천공항명령처리
+  그외그외(세션.cmd_행사 == 1)
+    처리.텔레그램행사명령처리
+  그외그외(세션.cmd_주변행사 == 1)
+    처리.텔레그램주변행사명령처리
   그외
     전송.명령모름응답
 }
@@ -83,6 +90,10 @@
 인천공항 도착 [공항코드] - 해당 공항발 오늘 도착편만 조회(예: NRT)
 인천공항 출발 - 인천공항 오늘 출발편 요약(상위 5건)
 인천공항 출발 [공항코드] - 해당 공항행 오늘 출발편만 조회(예: NRT)
+행사 - 이번 달 전국 행사/공연/축제 조회
+행사 [계약년월] - 해당 월 전국 행사/공연/축제 조회
+행사 [지역명] [계약년월] - 해당 지역/월 행사/공연/축제 조회(17개 시도는 이름만 바로 가능, 그 외 세부지역은 드로워 > 행사 > 지역 선택에서 검색)
+주변행사 - 내 주변 행사/공연/축제 조회(드로워 > 행사 > 내 주변에서 위치 권한 허용 필요)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -3166,3 +3177,456 @@ $$$세션.keco_watch_alert_text$$$}
 {[인천공항 기준] 오늘은 등록된 도착편이 없습니다.}
 문장::ICN.ICN출발없음문장
 {[인천공항 기준] 오늘은 등록된 출발편이 없습니다.}
+처리::TELEGRAM.텔레그램행사명령처리
+{
+  만약에(참)
+    함수.저장(tour_mode,행사)
+    함수.단어분리(tour_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.tour_cmd_word_list,1)
+    처리.TOUR명령파싱
+}
+처리::TOUR.TOUR명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.날짜(tour_month_candidate,%Y%m)
+    함수.저장(tour_region_mode,전국)
+    함수.저장(tour_region_name,전국)
+    처리.TOUR단어유효성검사
+  그외
+    함수.단어분리(tour_arg_word_list,세션.cmd_rest)
+    처리.TOUR인자개수분기
+}
+처리::TOUR.TOUR인자개수분기
+{
+  만약에(세션.리스트.tour_arg_word_list.SIZE == 1)
+    함수.저장(tour_month_candidate,세션.리스트.tour_arg_word_list[0])
+    함수.저장(tour_region_mode,전국)
+    함수.저장(tour_region_name,전국)
+    처리.TOUR단어유효성검사
+  그외그외(세션.리스트.tour_arg_word_list.SIZE == 2)
+    함수.저장(tour_region_candidate,세션.리스트.tour_arg_word_list[0])
+    함수.저장(tour_month_candidate,세션.리스트.tour_arg_word_list[1])
+    함수.저장(tour_region_mode,지역)
+    처리.TOUR단어유효성검사
+  그외
+    함수.저장(tour_reply_text,문장.TOUR파싱실패문장)
+    전송.TOUR응답전송
+}
+처리::TOUR.TOUR단어유효성검사
+{
+  만약에(세션.tour_month_candidate.길이 == 6)
+    처리.TOUR월분해
+  그외
+    함수.저장(tour_reply_text,문장.TOUR파싱실패문장)
+    전송.TOUR응답전송
+}
+처리::TOUR.TOUR월분해
+{
+  만약에(참)
+    함수.추출(tour_year,세션.tour_month_candidate,0,4)
+    함수.추출(tour_month,세션.tour_month_candidate,4,2)
+    함수.저장(tour_event_start,세션.tour_month_candidate)
+    함수.붙이기(tour_event_start,01)
+    처리.TOUR월말일계산
+}
+처리::TOUR.TOUR월말일계산
+{
+  만약에(세션.tour_month == 01)
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 02)
+    함수.저장(tour_last_day,28)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 03)
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 04)
+    함수.저장(tour_last_day,30)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 05)
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 06)
+    함수.저장(tour_last_day,30)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 07)
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 08)
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 09)
+    함수.저장(tour_last_day,30)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 10)
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+  그외그외(세션.tour_month == 11)
+    함수.저장(tour_last_day,30)
+    처리.TOUR종료일조립
+  그외
+    함수.저장(tour_last_day,31)
+    처리.TOUR종료일조립
+}
+처리::TOUR.TOUR종료일조립
+{
+  만약에(참)
+    함수.저장(tour_event_end,세션.tour_month_candidate)
+    함수.붙이기(tour_event_end,세션.tour_last_day)
+    처리.TOUR지역분기
+}
+처리::TOUR.TOUR지역분기
+{
+  만약에(세션.tour_region_mode == 전국)
+    전송.TOUR행사조회전송_전국
+  그외
+    처리.TOUR지역코드확인
+}
+처리::TOUR.TOUR지역코드확인
+{
+  만약에(참)
+    함수.쪼개기(tour_region_parts,세션.tour_region_candidate,@)
+    처리.TOUR지역코드분기
+}
+처리::TOUR.TOUR지역코드분기
+{
+  만약에(세션.리스트.tour_region_parts.SIZE == 3)
+    함수.저장(tour_region_name,세션.리스트.tour_region_parts[0])
+    함수.저장(tour_regn_cd,세션.리스트.tour_region_parts[1])
+    함수.저장(tour_signgu_cd,세션.리스트.tour_region_parts[2])
+    전송.TOUR행사조회전송_시군구
+  그외
+    처리.TOUR지역코드확인_시도표
+}
+처리::TOUR.TOUR지역코드확인_시도표
+{
+  만약에(세션.tour_region_candidate == 서울)
+    함수.저장(tour_region_name,서울)
+    함수.저장(tour_regn_cd,11)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 부산)
+    함수.저장(tour_region_name,부산)
+    함수.저장(tour_regn_cd,26)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 대구)
+    함수.저장(tour_region_name,대구)
+    함수.저장(tour_regn_cd,27)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 인천)
+    함수.저장(tour_region_name,인천)
+    함수.저장(tour_regn_cd,28)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 광주)
+    함수.저장(tour_region_name,광주)
+    함수.저장(tour_regn_cd,29)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 대전)
+    함수.저장(tour_region_name,대전)
+    함수.저장(tour_regn_cd,30)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 울산)
+    함수.저장(tour_region_name,울산)
+    함수.저장(tour_regn_cd,31)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 세종)
+    함수.저장(tour_region_name,세종)
+    함수.저장(tour_regn_cd,36)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 경기)
+    함수.저장(tour_region_name,경기)
+    함수.저장(tour_regn_cd,41)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 충북)
+    함수.저장(tour_region_name,충북)
+    함수.저장(tour_regn_cd,43)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 충남)
+    함수.저장(tour_region_name,충남)
+    함수.저장(tour_regn_cd,44)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 전남)
+    함수.저장(tour_region_name,전남)
+    함수.저장(tour_regn_cd,46)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 경북)
+    함수.저장(tour_region_name,경북)
+    함수.저장(tour_regn_cd,47)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 경남)
+    함수.저장(tour_region_name,경남)
+    함수.저장(tour_regn_cd,48)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 제주)
+    함수.저장(tour_region_name,제주)
+    함수.저장(tour_regn_cd,50)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 강원)
+    함수.저장(tour_region_name,강원)
+    함수.저장(tour_regn_cd,51)
+    전송.TOUR행사조회전송_시도
+  그외그외(세션.tour_region_candidate == 전북)
+    함수.저장(tour_region_name,전북)
+    함수.저장(tour_regn_cd,52)
+    전송.TOUR행사조회전송_시도
+  그외
+    함수.저장(tour_reply_text,문장.TOUR지역미지원문장)
+    전송.TOUR응답전송
+}
+처리::TOUR.TOUR응답분기처리
+{
+  만약에(세션.tour_mode == 주변)
+    처리.TOUR주변응답분기처리
+  그외
+    처리.TOUR행사응답분기처리
+}
+처리::TOUR.TOUR행사응답분기처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(tour_reply_text,문장.TOUR행사없음문장)
+    전송.TOUR응답전송
+  그외그외(수신메시지.response.body.totalCount == 1)
+    함수.저장(tour_title,수신메시지.response.body.items.item.title)
+    함수.저장(tour_addr,수신메시지.response.body.items.item.addr1)
+    함수.저장(tour_start,수신메시지.response.body.items.item.eventstartdate)
+    함수.저장(tour_end,수신메시지.response.body.items.item.eventenddate)
+    함수.저장(tour_summary_lines,문장.TOUR행사라인문장_단일)
+    함수.저장(tour_reply_text,문장.TOUR요약문장_단일)
+    전송.TOUR응답전송
+  그외
+    함수.객체저장(tour_items,수신메시지.response.body.items.item)
+    함수.저장(tour_idx,0)
+    함수.저장(tour_count,0)
+    함수.저장(tour_summary_lines,없음)
+    처리.TOUR항목순회
+}
+처리::TOUR.TOUR항목순회
+{
+  만약에(세션.객체.tour_items[세션.tour_idx].title == NULL)
+    함수.저장(tour_reply_text,문장.TOUR요약문장)
+    전송.TOUR응답전송
+  그외그외(세션.tour_count >= 5)
+    함수.저장(tour_reply_text,문장.TOUR요약문장)
+    전송.TOUR응답전송
+  그외
+    처리.TOUR항목추가
+}
+처리::TOUR.TOUR항목추가
+{
+  만약에(세션.tour_count == 0)
+    함수.저장(tour_summary_lines,문장.TOUR행사라인문장)
+    함수.더하기(tour_count,세션.tour_count,1)
+    함수.더하기(tour_idx,세션.tour_idx,1)
+    처리.TOUR항목순회
+  그외
+    함수.붙이기(tour_summary_lines,|,문장.TOUR행사라인문장)
+    함수.더하기(tour_count,세션.tour_count,1)
+    함수.더하기(tour_idx,세션.tour_idx,1)
+    처리.TOUR항목순회
+}
+전송::TOUR.TOUR행사조회전송_전국
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.TOUR.domain
+  전송메시지.주소.경로 = /searchFestival2
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = arrange
+  전송메시지.주소.파라미터[4].val = C
+  전송메시지.주소.파라미터[5].key = numOfRows
+  전송메시지.주소.파라미터[5].val = 5
+  전송메시지.주소.파라미터[6].key = pageNo
+  전송메시지.주소.파라미터[6].val = 1
+  전송메시지.주소.파라미터[7].key = eventStartDate
+  전송메시지.주소.파라미터[7].val = 세션.tour_event_start
+  전송메시지.주소.파라미터[8].key = eventEndDate
+  전송메시지.주소.파라미터[8].val = 세션.tour_event_end
+}
+전송::TOUR.TOUR행사조회전송_시도
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.TOUR.domain
+  전송메시지.주소.경로 = /searchFestival2
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = arrange
+  전송메시지.주소.파라미터[4].val = C
+  전송메시지.주소.파라미터[5].key = numOfRows
+  전송메시지.주소.파라미터[5].val = 5
+  전송메시지.주소.파라미터[6].key = pageNo
+  전송메시지.주소.파라미터[6].val = 1
+  전송메시지.주소.파라미터[7].key = eventStartDate
+  전송메시지.주소.파라미터[7].val = 세션.tour_event_start
+  전송메시지.주소.파라미터[8].key = eventEndDate
+  전송메시지.주소.파라미터[8].val = 세션.tour_event_end
+  전송메시지.주소.파라미터[9].key = lDongRegnCd
+  전송메시지.주소.파라미터[9].val = 세션.tour_regn_cd
+}
+전송::TOUR.TOUR행사조회전송_시군구
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.TOUR.domain
+  전송메시지.주소.경로 = /searchFestival2
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = arrange
+  전송메시지.주소.파라미터[4].val = C
+  전송메시지.주소.파라미터[5].key = numOfRows
+  전송메시지.주소.파라미터[5].val = 5
+  전송메시지.주소.파라미터[6].key = pageNo
+  전송메시지.주소.파라미터[6].val = 1
+  전송메시지.주소.파라미터[7].key = eventStartDate
+  전송메시지.주소.파라미터[7].val = 세션.tour_event_start
+  전송메시지.주소.파라미터[8].key = eventEndDate
+  전송메시지.주소.파라미터[8].val = 세션.tour_event_end
+  전송메시지.주소.파라미터[9].key = lDongRegnCd
+  전송메시지.주소.파라미터[9].val = 세션.tour_regn_cd
+  전송메시지.주소.파라미터[10].key = lDongSignguCd
+  전송메시지.주소.파라미터[10].val = 세션.tour_signgu_cd
+}
+전송::FLOW.TOUR응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.tour_reply_text
+}
+문장::TOUR.TOUR행사라인문장
+{$$$세션.객체.tour_items[세션.tour_idx].title$$$ ($$$세션.객체.tour_items[세션.tour_idx].eventstartdate$$$~$$$세션.객체.tour_items[세션.tour_idx].eventenddate$$$) $$$세션.객체.tour_items[세션.tour_idx].addr1$$$}
+문장::TOUR.TOUR행사라인문장_단일
+{$$$세션.tour_title$$$ ($$$세션.tour_start$$$~$$$세션.tour_end$$$) $$$세션.tour_addr$$$}
+문장::TOUR.TOUR요약문장
+{$$$세션.tour_region_name$$$ $$$세션.tour_year$$$년 $$$세션.tour_month$$$월 행사/공연/축제 (최근 $$$세션.tour_count$$$건): $$$세션.tour_summary_lines$$$}
+문장::TOUR.TOUR요약문장_단일
+{$$$세션.tour_region_name$$$ $$$세션.tour_year$$$년 $$$세션.tour_month$$$월 행사/공연/축제 (1건): $$$세션.tour_summary_lines$$$}
+문장::TOUR.TOUR행사없음문장
+{$$$세션.tour_region_name$$$ $$$세션.tour_year$$$년 $$$세션.tour_month$$$월에는 행사/공연/축제 내역이 없습니다.}
+문장::TELEGRAM.TOUR파싱실패문장
+{계약년월 형식을 이해하지 못했습니다. "행사" 또는 "행사 202611"처럼 말씀해주세요.}
+문장::TELEGRAM.TOUR지역미지원문장
+{"$$$세션.tour_region_candidate$$$"은(는) 아직 지원하지 않는 지역입니다. 서울/부산/대구/인천/광주/대전/울산/세종/경기/충북/충남/전남/경북/경남/제주/강원/전북은 바로 가능하고, 그 외 세부지역은 드로워 > 행사 > 지역 선택에서 검색해보세요.}
+처리::TELEGRAM.텔레그램주변행사명령처리
+{
+  만약에(참)
+    함수.저장(tour_mode,주변)
+    함수.단어분리(tournear_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.tournear_cmd_word_list,1)
+    처리.TOUR주변명령파싱
+}
+처리::TOUR.TOUR주변명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(tour_reply_text,문장.TOUR주변위치없음문장)
+    전송.TOUR응답전송
+  그외
+    함수.쪼개기(tournear_coord_parts,세션.cmd_rest,@)
+    처리.TOUR주변좌표분기
+}
+처리::TOUR.TOUR주변좌표분기
+{
+  만약에(세션.리스트.tournear_coord_parts.SIZE == 2)
+    함수.저장(tour_lat,세션.리스트.tournear_coord_parts[0])
+    함수.저장(tour_lng,세션.리스트.tournear_coord_parts[1])
+    전송.TOUR주변조회전송
+  그외
+    함수.저장(tour_reply_text,문장.TOUR주변위치없음문장)
+    전송.TOUR응답전송
+}
+처리::TOUR.TOUR주변응답분기처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(tour_reply_text,문장.TOUR주변없음문장)
+    전송.TOUR응답전송
+  그외그외(수신메시지.response.body.totalCount == 1)
+    함수.저장(tour_title,수신메시지.response.body.items.item.title)
+    함수.저장(tour_addr,수신메시지.response.body.items.item.addr1)
+    함수.저장(tour_dist,수신메시지.response.body.items.item.dist)
+    함수.저장(tour_summary_lines,문장.TOUR주변라인문장_단일)
+    함수.저장(tour_reply_text,문장.TOUR주변요약문장_단일)
+    전송.TOUR응답전송
+  그외
+    함수.객체저장(tournear_items,수신메시지.response.body.items.item)
+    함수.저장(tournear_idx,0)
+    함수.저장(tournear_count,0)
+    함수.저장(tour_summary_lines,없음)
+    처리.TOUR주변항목순회
+}
+처리::TOUR.TOUR주변항목순회
+{
+  만약에(세션.객체.tournear_items[세션.tournear_idx].title == NULL)
+    함수.저장(tour_reply_text,문장.TOUR주변요약문장)
+    전송.TOUR응답전송
+  그외그외(세션.tournear_count >= 5)
+    함수.저장(tour_reply_text,문장.TOUR주변요약문장)
+    전송.TOUR응답전송
+  그외
+    처리.TOUR주변항목추가
+}
+처리::TOUR.TOUR주변항목추가
+{
+  만약에(세션.tournear_count == 0)
+    함수.저장(tour_summary_lines,문장.TOUR주변라인문장)
+    함수.더하기(tournear_count,세션.tournear_count,1)
+    함수.더하기(tournear_idx,세션.tournear_idx,1)
+    처리.TOUR주변항목순회
+  그외
+    함수.붙이기(tour_summary_lines,|,문장.TOUR주변라인문장)
+    함수.더하기(tournear_count,세션.tournear_count,1)
+    함수.더하기(tournear_idx,세션.tournear_idx,1)
+    처리.TOUR주변항목순회
+}
+전송::TOUR.TOUR주변조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.TOUR.domain
+  전송메시지.주소.경로 = /locationBasedList2
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = arrange
+  전송메시지.주소.파라미터[4].val = E
+  전송메시지.주소.파라미터[5].key = numOfRows
+  전송메시지.주소.파라미터[5].val = 5
+  전송메시지.주소.파라미터[6].key = pageNo
+  전송메시지.주소.파라미터[6].val = 1
+  전송메시지.주소.파라미터[7].key = contentTypeId
+  전송메시지.주소.파라미터[7].val = 85
+  전송메시지.주소.파라미터[8].key = mapX
+  전송메시지.주소.파라미터[8].val = 세션.tour_lng
+  전송메시지.주소.파라미터[9].key = mapY
+  전송메시지.주소.파라미터[9].val = 세션.tour_lat
+  전송메시지.주소.파라미터[10].key = radius
+  전송메시지.주소.파라미터[10].val = 5000
+}
+문장::TOUR.TOUR주변라인문장
+{$$$세션.객체.tournear_items[세션.tournear_idx].title$$$ (약 $$$세션.객체.tournear_items[세션.tournear_idx].dist$$$m) $$$세션.객체.tournear_items[세션.tournear_idx].addr1$$$}
+문장::TOUR.TOUR주변라인문장_단일
+{$$$세션.tour_title$$$ (약 $$$세션.tour_dist$$$m) $$$세션.tour_addr$$$}
+문장::TOUR.TOUR주변요약문장
+{내 주변 행사/공연/축제 (최근 $$$세션.tournear_count$$$건): $$$세션.tour_summary_lines$$$}
+문장::TOUR.TOUR주변요약문장_단일
+{내 주변 행사/공연/축제 (1건): $$$세션.tour_summary_lines$$$}
+문장::TOUR.TOUR주변없음문장
+{내 주변 5km 이내에는 행사/공연/축제 정보가 없습니다.}
+문장::TELEGRAM.TOUR주변위치없음문장
+{위치 정보를 가져오지 못했습니다. 드로워 > 행사 > 내 주변에서 위치 권한을 허용했는지 확인해주세요.}

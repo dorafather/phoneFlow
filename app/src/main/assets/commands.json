@@ -48,6 +48,14 @@
         {"label": "도착", "insert": "인천공항 도착"},
         {"label": "출발", "insert": "인천공항 출발"}
       ]
+    },
+    {
+      "label": "행사",
+      "items": [
+        {"label": "조회", "insert": "행사 "},
+        {"label": "지역 선택", "insert": "행사 "},
+        {"label": "내 주변", "insert": "주변행사 "}
+      ]
     }
   ]
 }

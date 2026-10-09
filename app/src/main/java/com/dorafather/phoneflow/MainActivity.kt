@@ -1,13 +1,18 @@
 package com.dorafather.phoneflow
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -59,7 +65,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER, KMA_PICKER }
+private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -206,6 +212,43 @@ private fun AppRoot(
     // 채워 전송" 요구사항) - 일반 String 상태로는 커서 위치를 보장할 수 없다.
     var input by remember { mutableStateOf(TextFieldValue("")) }
 
+    // "행사 > 내 주변"(GPS 기반 locationBasedList2, 2026-10-09 추가) - 위치
+    // 권한이 이미 있으면 바로 마지막 위치를 읽어 "주변행사 위도@경도 " 명령을
+    // 채우고, 없으면 시스템 권한 요청 다이얼로그를 띄운 뒤 승인되면 이어서
+    // 같은 동작을 한다. Play Services 등 새 의존성 없이 프레임워크
+    // LocationManager.getLastKnownLocation만 쓴다(실시간 추적 불필요 -
+    // 이미 기기가 최근에 구해둔 위치로 충분).
+    val context = LocalContext.current
+    fun fillNearbyFestivalCommand() {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val best = lm.getProviders(true)
+            .mapNotNull { provider ->
+                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            }
+            .minByOrNull { it.accuracy }
+        if (best == null) {
+            val insert = "주변행사 "
+            input = TextFieldValue(insert, selection = TextRange(insert.length))
+        } else {
+            val insert = "주변행사 ${best.latitude}@${best.longitude} "
+            input = TextFieldValue(insert, selection = TextRange(insert.length))
+        }
+    }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyFestivalCommand() }
+    fun requestNearbyFestival() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyFestivalCommand()
+        } else {
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -237,6 +280,15 @@ private fun AppRoot(
                     onKmaPickerRequested = {
                         screen = Screen.KMA_PICKER
                         scope.launch { drawerState.close() }
+                    },
+                    onFestivalPickerRequested = {
+                        screen = Screen.FESTIVAL_PICKER
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyFestivalRequested = {
+                        requestNearbyFestival()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
                     }
                 )
             }
@@ -252,6 +304,7 @@ private fun AppRoot(
                                 Screen.SCENARIO -> "한글 시나리오 내용"
                                 Screen.LAWD_PICKER -> "지역 검색"
                                 Screen.KMA_PICKER -> "지역 검색"
+                                Screen.FESTIVAL_PICKER -> "지역 검색"
                                 Screen.CHAT -> "phoneFlow"
                             }
                         )
@@ -288,6 +341,14 @@ private fun AppRoot(
                         // 기상청은 "지역추가"가 아니라 "지역 추가"(공백 있음) 문법이다
                         // (rest.sce 기존 관례 그대로 유지 - MOLIT과 다름).
                         val insert = "기상청 지역 추가 $nameNxNyToken"
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        screen = Screen.CHAT
+                    }
+                    Screen.FESTIVAL_PICKER -> FestivalPickerScreen(filesDir = filesDir) { token ->
+                        // 행사는 관심지역 등록이 없는 조회 전용 기능이라 "지역추가"가
+                        // 아니라 "행사 [지역] [계약년월]" 1회성 조회 형태로 바로 채운다 -
+                        // 계약년월은 사용자가 이어서 입력.
+                        val insert = "행사 $token "
                         input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
@@ -352,7 +413,9 @@ private fun CommandDrawerContent(
     onSettingsPicked: () -> Unit,
     onScenarioPicked: () -> Unit,
     onLawdPickerRequested: () -> Unit,
-    onKmaPickerRequested: () -> Unit
+    onKmaPickerRequested: () -> Unit,
+    onFestivalPickerRequested: () -> Unit,
+    onNearbyFestivalRequested: () -> Unit
 ) {
     val expanded = remember { mutableStateListOf<String>() }
     val expandedQueries = remember { mutableStateListOf<String>() }
@@ -458,6 +521,35 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onKmaPickerRequested() }
+                                )
+                            }
+                        } else if (group.label == "행사" && cmd.label == "지역 선택") {
+                            // 행사는 관심지역 등록 개념이 없는 조회 전용 기능이라 별도
+                            // 왓치리스트/추가/삭제 없이, 전국 법정동 검색 화면으로
+                            // 보내서 고른 지역으로 바로 1회성 조회 명령을 채운다
+                            // (2026-10-09 한국관광공사 TourAPI 행사정보 추가 - 법정동
+                            // 시도/시군구코드가 MOLIT과 같은 체계라 lawd_codes.db 재사용).
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onFestivalPickerRequested() }
+                                )
+                            }
+                        } else if (group.label == "행사" && cmd.label == "내 주변") {
+                            // GPS 기반 locationBasedList2 연동(2026-10-09 추가) - 위치
+                            // 권한 확인/요청과 마지막 위치 읽기는 AppRoot의
+                            // onNearbyFestivalRequested가 처리하고, 여기서는 그냥
+                            // 호출만 한다.
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onNearbyFestivalRequested() }
                                 )
                             }
                         } else {

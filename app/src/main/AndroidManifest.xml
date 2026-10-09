@@ -2,8 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- REST 통신 모듈(Kotlin 호스트 레이어, AndroidHttpClient)이 실제 HTTPS
-         요청을 보내야 하므로 INTERNET 권한 추가. 위치 등 다른 권한은 범위 밖. -->
+         요청을 보내야 하므로 INTERNET 권한 추가. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- "행사 > 내 주변" 기능(한국관광공사 locationBasedList2, GPS 좌표로 근처
+         행사/공연/축제 조회)을 위한 위치 권한 - 2026-10-09 추가. 정밀 위치가
+         없으면 대략적 위치로라도 동작하도록 FINE/COARSE 둘 다 선언한다. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="false"
