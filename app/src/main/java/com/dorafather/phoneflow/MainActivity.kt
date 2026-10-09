@@ -318,6 +318,22 @@ private val ITEM_QUERY_TEMPLATES: Map<String, (String) -> String> = mapOf(
     "실거래가" to { region -> "실거래가 $region " }, // 계약년월은 사용자가 이어서 입력
     "주식" to { name -> "주식 시세 $name" }
 )
+// "지역 삭제"/"관심종목 삭제" 리프도 "지역 조회"와 동일한 패턴으로 등록된
+// 항목을 펼쳐 보여주고, 탭하면 그 이름이 채워진 삭제 명령을 바로 넣어준다
+// (2026-10-09 "이름 직접 입력하는 것보다 목록에서 선택하게 해달라" 요청 -
+// 삭제할 땐 정확한 이름을 기억해 직접 타이핑해야 해서 불편했음).
+private val DELETE_LEAF_LABEL = mapOf(
+    "기상청" to "지역 삭제",
+    "미세먼지" to "지역 삭제",
+    "실거래가" to "지역 삭제",
+    "주식" to "관심종목 삭제",
+)
+private val ITEM_DELETE_TEMPLATES: Map<String, (String) -> String> = mapOf(
+    "기상청" to { region -> "기상청 지역 삭제 $region" },
+    "미세먼지" to { region -> "미세먼지 지역 삭제 $region" },
+    "실거래가" to { region -> "실거래가 지역삭제 $region" }, // MOLIT는 "지역삭제" 붙여쓰기
+    "주식" to { name -> "주식 관심종목 삭제 $name" }
+)
 
 @Composable
 private fun CommandDrawerContent(
@@ -370,8 +386,12 @@ private fun CommandDrawerContent(
                 }
                 if (expanded.contains(group.label)) {
                     group.items.forEach { cmd ->
-                        val itemTemplate = ITEM_QUERY_TEMPLATES[group.label]
-                        if (cmd.label == LEAF_LABEL_TO_SUBTREE[group.label] && itemTemplate != null) {
+                        val queryTemplate = ITEM_QUERY_TEMPLATES[group.label]
+                        val deleteTemplate = ITEM_DELETE_TEMPLATES[group.label]
+                        val isQueryLeaf = cmd.label == LEAF_LABEL_TO_SUBTREE[group.label] && queryTemplate != null
+                        val isDeleteLeaf = cmd.label == DELETE_LEAF_LABEL[group.label] && deleteTemplate != null
+                        val itemTemplate = if (isQueryLeaf) queryTemplate else deleteTemplate
+                        if ((isQueryLeaf || isDeleteLeaf) && itemTemplate != null) {
                             val qKey = "${group.label}-${cmd.label}"
                             item(key = "item-$qKey") {
                                 val qOpen = expandedQueries.contains(qKey)
