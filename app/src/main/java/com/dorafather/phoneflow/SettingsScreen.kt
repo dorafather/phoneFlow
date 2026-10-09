@@ -29,31 +29,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.AddrIniStore
 import com.dorafather.phoneflow.net.AndroidHttpClient
+import com.dorafather.phoneflow.net.ServiceCatalogStore
 import com.dorafather.phoneflow.net.WatchlistStore
-import java.util.Calendar
-import java.util.Locale
-
-/** 5개 공공데이터 서비스의 활용신청 상세 페이지. NotebookFlow 작업 중
- *  직접 확인한 실제 주소(업무지침 원문 그대로, 앱에 박기 전 한 번 더
- *  열어 확인함). */
-private data class ServiceInfo(
-    val key: String,
-    val label: String,
-    val applyUrl: String
-)
-
-private val SERVICES = listOf(
-    ServiceInfo("KRX", "주식(KRX)", "https://www.data.go.kr/data/15094808/openapi.do"),
-    ServiceInfo("KMA", "기상청(KMA)", "https://www.data.go.kr/data/15084084/openapi.do"),
-    ServiceInfo("KECO", "미세먼지(KECO)", "https://www.data.go.kr/data/15073861/openapi.do"),
-    ServiceInfo("KMA_SPCD", "공휴일(KMA_SPCD)", "https://www.data.go.kr/data/15012690/openapi.do"),
-    ServiceInfo("MOLIT", "실거래가(MOLIT)", "https://www.data.go.kr/data/15126469/openapi.do"),
-    ServiceInfo("ICN", "인천공항(ICN)", "https://www.data.go.kr/data/15095074/openapi.do"),
-    // 2026-10-09 추가 - 한국관광공사 TourAPI(KorService2, 행사/공연/축제).
-    // 공공데이터포털에서 직접 검색해 Base URL이 apis.data.go.kr/B551011/
-    // KorService2로 일치하는 것을 확인한 실제 주소.
-    ServiceInfo("TOUR", "행사(TOUR)", "https://www.data.go.kr/data/15101578/openapi.do"),
-)
 
 private enum class CheckStatus { UNKNOWN, CHECKING, OK, FAIL }
 
@@ -70,6 +47,17 @@ fun SettingsScreen(filesDir: java.io.File) {
     // 버튼으로도 다시 읽을 수 있게 한다 - API 호출 없이 addr.ini만 읽으므로
     // 매번 다시 읽어도 비용이 거의 없다.
     var watchlist by remember { mutableStateOf(WatchlistStore.readAll(filesDir)) }
+    // readMasked()가 null이 아니면 "<여기에 입력하세요>" 플레이스홀더가 아닌
+    // 실제 키가 저장돼 있다는 뜻 - 그때만 readRaw()를 점검 URL 조립에 넘긴다
+    // (플레이스홀더 문자열 그대로 URL에 끼워 넣는 것을 막기 위함).
+    var services by remember {
+        mutableStateOf(
+            ServiceCatalogStore.readAll(
+                filesDir,
+                if (AddrIniStore.readMasked(filesDir) != null) AddrIniStore.readRaw(filesDir) else null
+            )
+        )
+    }
 
     val statuses = remember { mutableStateMapOf<String, CheckStatus>() }
 
@@ -144,6 +132,7 @@ fun SettingsScreen(filesDir: java.io.File) {
                         newKeyInput = ""
                         saveMessage = "저장했습니다. 엔진이 1초 안에 새 키를 자동으로 읽습니다(앱 재시작 불필요)."
                         statuses.clear()
+                        services = ServiceCatalogStore.readAll(filesDir, maskedKey?.let { AddrIniStore.readRaw(filesDir) })
                     } else {
                         saveMessage = "저장 실패 - 키를 입력했는지 확인해주세요."
                     }
@@ -161,17 +150,18 @@ fun SettingsScreen(filesDir: java.io.File) {
             Spacer(Modifier.height(8.dp))
         }
 
-        items(SERVICES) { svc ->
+        items(services) { svc ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 val status = statuses[svc.key] ?: CheckStatus.UNKNOWN
-                val mark = when (status) {
-                    CheckStatus.OK -> "✅ "
-                    CheckStatus.FAIL -> "❌ "
-                    CheckStatus.CHECKING -> "⏳ "
-                    CheckStatus.UNKNOWN -> ""
+                val mark = when {
+                    status == CheckStatus.OK -> "✅ "
+                    status == CheckStatus.FAIL -> "❌ "
+                    status == CheckStatus.CHECKING -> "⏳ "
+                    svc.healthCheckUrl == null -> "➖ "
+                    else -> ""
                 }
                 Text("$mark${svc.label}", modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
@@ -191,13 +181,15 @@ fun SettingsScreen(filesDir: java.io.File) {
                     saveMessage = "먼저 서비스키를 저장해주세요."
                     return@Button
                 }
-                SERVICES.forEach { svc -> statuses[svc.key] = CheckStatus.CHECKING }
-                runHealthChecks(key) { svcKey, ok -> statuses[svcKey] = if (ok) CheckStatus.OK else CheckStatus.FAIL }
+                val checkable = services.filter { it.healthCheckUrl != null }
+                checkable.forEach { svc -> statuses[svc.key] = CheckStatus.CHECKING }
+                runHealthChecks(checkable) { svcKey, ok -> statuses[svcKey] = if (ok) CheckStatus.OK else CheckStatus.FAIL }
             }) { Text("키 상태 점검") }
             Spacer(Modifier.height(4.dp))
             Text(
                 "❌는 \"키 또는 활용신청을 확인하세요\"를 의미합니다 - 틀린 키와 " +
-                    "특정 서비스만 활용신청을 안 한 경우를 현재는 구분하지 않습니다.",
+                    "특정 서비스만 활용신청을 안 한 경우를 현재는 구분하지 않습니다. " +
+                    "➖는 아직 이 점검 기능을 지원하지 않는 서비스입니다.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -206,30 +198,11 @@ fun SettingsScreen(filesDir: java.io.File) {
 
 /** 서비스당 최소 1건(numOfRows=1 등)짜리 가벼운 조회로 키 인증 여부만 확인한다.
  *  외부 호출이므로 [AndroidHttpClient]를 DSL 엔진을 거치지 않고 직접 쓴다 -
- *  엔진 세션/채팅 UI를 전혀 건드리지 않는 순수 점검용 호출. */
-private fun runHealthChecks(serviceKey: String, onResult: (String, Boolean) -> Unit) {
-    val enc = java.net.URLEncoder.encode(serviceKey, "UTF-8")
-    val cal = Calendar.getInstance()
-    val thisYear = cal.get(Calendar.YEAR)
-    cal.add(Calendar.DAY_OF_MONTH, -1)
-    val yesterday = String.format(Locale.US, "%04d%02d%02d", cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
-    val molitCal = Calendar.getInstance().apply { add(Calendar.MONTH, -2) }
-    val molitYm = String.format(Locale.US, "%04d%02d", molitCal.get(Calendar.YEAR), molitCal.get(Calendar.MONTH) + 1)
-
-    val checks = listOf(
-        "KRX" to "https://apis.data.go.kr/1160100/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2?serviceKey=$enc&resultType=json&numOfRows=1&pageNo=1&likeSrtnCd=005930",
-        "KMA" to "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=$enc&pageNo=1&numOfRows=1&dataType=JSON&base_date=$yesterday&base_time=0200&nx=60&ny=127",
-        "KECO" to "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?serviceKey=$enc&returnType=json&numOfRows=1&pageNo=1&sidoName=서울&ver=1.5",
-        "KMA_SPCD" to "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getHoliDeInfo?ServiceKey=$enc&pageNo=1&numOfRows=1&solYear=$thisYear&solMonth=01&_type=json",
-        "MOLIT" to "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=$enc&LAWD_CD=11680&DEAL_YMD=$molitYm&pageNo=1&numOfRows=1&_type=json",
-        // ICN은 개발계정 일 500회 한도라 airport_code=ZZZ(존재하지 않는 공항코드,
-        // 실측으로 totalCount=0/응답 108바이트 확인됨)로 가장 가벼운 호출만
-        // 보낸다 - 키가 맞으면 정상 200에 "_ERROR" 문자열이 없어 ✅로 집계된다.
-        "ICN" to "https://apis.data.go.kr/B551177/StatusOfPassengerFlightsDSOdp/getPassengerArrivalsDSOdp?serviceKey=$enc&type=json&airport_code=ZZZ",
-        "TOUR" to "https://apis.data.go.kr/B551011/KorService2/searchFestival2?serviceKey=$enc&MobileOS=ETC&MobileApp=phoneFlow&_type=json&numOfRows=1&pageNo=1&arrange=C&eventStartDate=$yesterday",
-    )
-
-    checks.forEach { (svcKey, url) ->
+ *  엔진 세션/채팅 UI를 전혀 건드리지 않는 순수 점검용 호출. 점검 URL 자체는
+ *  이제 addr.ini의 health_check_path=로부터 [ServiceCatalogStore]가 조립한다. */
+private fun runHealthChecks(targets: List<ServiceCatalogStore.ServiceEntry>, onResult: (String, Boolean) -> Unit) {
+    targets.forEach { svc ->
+        val url = svc.healthCheckUrl ?: return@forEach
         AndroidHttpClient.request("GET", url, emptyMap(), null) { result ->
             // data.go.kr 에러 응답은 실측으로 확인된 공통 패턴상 "_ERROR"로
             //끝나는 errMsg를 담는다(SERVICE_KEY_IS_NOT_REGISTERED_ERROR 등,
@@ -237,7 +210,7 @@ private fun runHealthChecks(serviceKey: String, onResult: (String, Boolean) -> U
             // 본다 - "활용신청 안 한 서비스"의 실제 에러 코드는 전부 활용신청이
             // 이미 끝난 키만 갖고 있어 실측하지 못했다(산출물에 명시).
             val ok = result.ok && !result.body.contains("_ERROR")
-            onResult(svcKey, ok)
+            onResult(svc.key, ok)
         }
     }
 }

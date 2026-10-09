@@ -46,7 +46,7 @@ object WatchlistStore {
         val cat = GROUP_LABEL_TO_CATEGORY[groupLabel] ?: return emptyList()
         val f = File(filesDir, "addr.ini")
         if (!f.exists()) return emptyList()
-        val section = parseIni(f.readText())[cat.section] ?: emptyMap()
+        val section = IniParser.parse(f.readText())[cat.section] ?: emptyMap()
         return (1..5).mapNotNull { i ->
             section["${cat.slotPrefix}$i"]?.trim()
                 ?.takeIf { it.isNotEmpty() && it != EMPTY_SLOT }
@@ -57,7 +57,7 @@ object WatchlistStore {
 
     fun readAll(filesDir: File): List<CategoryStatus> {
         val f = File(filesDir, "addr.ini")
-        val sections = if (f.exists()) parseIni(f.readText()) else emptyMap()
+        val sections = if (f.exists()) IniParser.parse(f.readText()) else emptyMap()
         return CATEGORIES.map { cat ->
             val section = sections[cat.section] ?: emptyMap()
             val items = (1..5).mapNotNull { i ->
@@ -65,23 +65,5 @@ object WatchlistStore {
             }
             CategoryStatus(cat.label, items)
         }
-    }
-
-    /** "[섹션]"/"key=value" 줄 단위 포맷 - IniFileReader(libUtil)가 읽는 것과 같은 포맷. */
-    private fun parseIni(text: String): Map<String, Map<String, String>> {
-        val result = mutableMapOf<String, MutableMap<String, String>>()
-        var current: MutableMap<String, String>? = null
-        for (raw in text.lineSequence()) {
-            val line = raw.trim()
-            if (line.isEmpty() || line.startsWith(";") || line.startsWith("#")) continue
-            if (line.startsWith("[") && line.endsWith("]")) {
-                current = result.getOrPut(line.substring(1, line.length - 1)) { mutableMapOf() }
-                continue
-            }
-            val idx = line.indexOf('=')
-            if (idx <= 0) continue
-            current?.put(line.substring(0, idx).trim(), line.substring(idx + 1).trim())
-        }
-        return result
     }
 }
