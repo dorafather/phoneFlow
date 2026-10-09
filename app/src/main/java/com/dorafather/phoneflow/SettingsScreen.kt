@@ -100,6 +100,26 @@ fun SettingsScreen(filesDir: java.io.File) {
         item {
             Text("공공데이터포털 인증키", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
+            // 최초 설치자는 서비스키 자체가 없는 경우가 대부분이라, 키 입력란
+            // 바로 위에 포털 로그인/회원가입 딥링크를 둔다(2026-10-09 "편의성"
+            // 요청) - 아래 "서비스별 활용신청 바로가기"로 가도 결국 로그인부터
+            // 해야 하니, 그 전 단계를 여기서 바로 열어준다. 둘 다 브라우저에서
+            // 직접 열어 확인한 실제 주소(추측 아님) - 로그인은 www 도메인의
+            // 공개 진입점, 회원가입은 거기서 이어지는 auth 서브도메인 주소.
+            Text(
+                "아직 공공데이터포털 계정이 없으신가요?",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.data.go.kr/uim/login/loginView.do")))
+                }) { Text("포털 로그인") }
+                OutlinedButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://auth.data.go.kr/sso/common-signup")))
+                }) { Text("회원가입") }
+            }
+            Spacer(Modifier.height(12.dp))
             Text(
                 maskedKey?.let { "현재 저장된 키: $it" } ?: "저장된 키가 없습니다 (아직 조회 결과를 받을 수 없음)",
                 style = MaterialTheme.typography.bodyMedium
