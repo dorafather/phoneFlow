@@ -49,6 +49,10 @@ private val SERVICES = listOf(
     ServiceInfo("KMA_SPCD", "공휴일(KMA_SPCD)", "https://www.data.go.kr/data/15012690/openapi.do"),
     ServiceInfo("MOLIT", "실거래가(MOLIT)", "https://www.data.go.kr/data/15126469/openapi.do"),
     ServiceInfo("ICN", "인천공항(ICN)", "https://www.data.go.kr/data/15095074/openapi.do"),
+    // 2026-10-09 추가 - 한국관광공사 TourAPI(KorService2, 행사/공연/축제).
+    // 공공데이터포털에서 직접 검색해 Base URL이 apis.data.go.kr/B551011/
+    // KorService2로 일치하는 것을 확인한 실제 주소.
+    ServiceInfo("TOUR", "행사(TOUR)", "https://www.data.go.kr/data/15101578/openapi.do"),
 )
 
 private enum class CheckStatus { UNKNOWN, CHECKING, OK, FAIL }
@@ -202,6 +206,7 @@ private fun runHealthChecks(serviceKey: String, onResult: (String, Boolean) -> U
         // 실측으로 totalCount=0/응답 108바이트 확인됨)로 가장 가벼운 호출만
         // 보낸다 - 키가 맞으면 정상 200에 "_ERROR" 문자열이 없어 ✅로 집계된다.
         "ICN" to "https://apis.data.go.kr/B551177/StatusOfPassengerFlightsDSOdp/getPassengerArrivalsDSOdp?serviceKey=$enc&type=json&airport_code=ZZZ",
+        "TOUR" to "https://apis.data.go.kr/B551011/KorService2/searchFestival2?serviceKey=$enc&MobileOS=ETC&MobileApp=phoneFlow&_type=json&numOfRows=1&pageNo=1&arrange=C&eventStartDate=$yesterday",
     )
 
     checks.forEach { (svcKey, url) ->
