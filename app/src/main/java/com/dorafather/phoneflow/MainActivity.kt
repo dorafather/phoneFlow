@@ -385,8 +385,8 @@ private fun CommandDrawerContent(
                                         )
                                     }
                                 } else {
-                                    names.forEach { name ->
-                                        item(key = "item-$qKey-$name") {
+                                    names.forEachIndexed { nameIdx, name ->
+                                        item(key = "item-$qKey-$nameIdx-$name") {
                                             Text(
                                                 name,
                                                 modifier = Modifier

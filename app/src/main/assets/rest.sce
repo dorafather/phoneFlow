@@ -2677,6 +2677,34 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(molit_resolved_code,세션.molit_lookup_code)
     함수.저장(molit_ini_write_value,세션.molit_target_name)
     함수.붙이기(molit_ini_write_value,세션.molit_ini_colon,세션.molit_resolved_code)
+    함수.쪼개기(molit_dup_check_list,세션.molit_watch_csv,|)
+    함수.저장(molit_dup_check_idx,0)
+    함수.저장(molit_dup_found,0)
+    처리.MOLIT관심지역중복검사
+}
+처리::MOLIT.MOLIT관심지역중복검사
+{
+  만약에(세션.molit_dup_check_idx >= 세션.리스트.molit_dup_check_list.SIZE)
+    처리.MOLIT관심지역중복검사완료
+  그외
+    함수.쪼개기(molit_dup_check_parts,세션.리스트.molit_dup_check_list[세션.molit_dup_check_idx],:)
+    처리.MOLIT관심지역중복검사항목
+}
+처리::MOLIT.MOLIT관심지역중복검사항목
+{
+  만약에(세션.리스트.molit_dup_check_parts[0] == 세션.molit_target_name)
+    함수.저장(molit_dup_found,1)
+    처리.MOLIT관심지역중복검사완료
+  그외
+    함수.더하기(molit_dup_check_idx,세션.molit_dup_check_idx,1)
+    처리.MOLIT관심지역중복검사
+}
+처리::MOLIT.MOLIT관심지역중복검사완료
+{
+  만약에(세션.molit_dup_found == 1)
+    함수.저장(molit_reply_text,문장.MOLIT관심지역중복문장)
+    전송.MOLIT응답전송
+  그외
     함수.저장(molit_ini_found,0)
     처리.MOLIT관심지역ini빈슬롯찾기1
 }
@@ -2897,6 +2925,8 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.molit_lookup_name$$$은(는) 찾을 수 없습니다. 드로워 > 실거래가 > 지역 추가에서 검색해 등록해보세요.}
 문장::TELEGRAM.MOLIT관심지역추가완료문장
 {$$$세션.molit_target_name$$$($$$세션.molit_resolved_code$$$)를 관심지역에 추가했습니다.}
+문장::TELEGRAM.MOLIT관심지역중복문장
+{$$$세션.molit_target_name$$$은(는) 이미 관심지역에 등록되어 있습니다.}
 문장::TELEGRAM.MOLIT관심지역추가한도초과문장
 {이미 관심지역이 5개 등록되어 있어 더 추가할 수 없습니다. 기존 지역을 삭제한 후 다시 시도해주세요.}
 문장::TELEGRAM.MOLIT관심지역삭제완료문장
