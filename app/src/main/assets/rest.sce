@@ -3736,9 +3736,35 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(hira_cur_sat_e,-)
     처리.HIRA상세결과반영
   그외
+    처리.HIRA필드_ngt확인
+}
+처리::HIRA.HIRA필드_ngt확인
+{
+  만약에(수신메시지.response.body.items.item.emyNgtYn == NULL)
+    함수.저장(hira_cur_ngt,정보없음)
+    처리.HIRA필드_mon확인
+  그외
     함수.저장(hira_cur_ngt,수신메시지.response.body.items.item.emyNgtYn)
+    처리.HIRA필드_mon확인
+}
+처리::HIRA.HIRA필드_mon확인
+{
+  만약에(수신메시지.response.body.items.item.trmtMonStart == NULL)
+    함수.저장(hira_cur_mon_s,-)
+    함수.저장(hira_cur_mon_e,-)
+    처리.HIRA필드_sat확인
+  그외
     함수.저장(hira_cur_mon_s,수신메시지.response.body.items.item.trmtMonStart)
     함수.저장(hira_cur_mon_e,수신메시지.response.body.items.item.trmtMonEnd)
+    처리.HIRA필드_sat확인
+}
+처리::HIRA.HIRA필드_sat확인
+{
+  만약에(수신메시지.response.body.items.item.trmtSatStart == NULL)
+    함수.저장(hira_cur_sat_s,-)
+    함수.저장(hira_cur_sat_e,-)
+    처리.HIRA상세결과반영
+  그외
     함수.저장(hira_cur_sat_s,수신메시지.response.body.items.item.trmtSatStart)
     함수.저장(hira_cur_sat_e,수신메시지.response.body.items.item.trmtSatEnd)
     처리.HIRA상세결과반영
@@ -3760,7 +3786,7 @@ $$$세션.keco_watch_alert_text$$$}
     함수.더하기(hira_idx,세션.hira_idx,1)
     처리.HIRA항목순회
   그외
-    함수.붙이기(hira_summary_lines,|,문장.HIRA라인문장)
+    함수.붙이기(hira_summary_lines,문장.HIRA라인문장)
     함수.더하기(hira_count,세션.hira_count,1)
     함수.더하기(hira_idx,세션.hira_idx,1)
     처리.HIRA항목순회
@@ -3771,7 +3797,8 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.text = 세션.hira_reply_text
 }
 문장::HIRA.HIRA라인문장
-{$$$세션.hira_cur_name$$$ ($$$세션.hira_cur_addr$$$, $$$세션.hira_cur_tel$$$) 평일 $$$세션.hira_cur_mon_s$$$~$$$세션.hira_cur_mon_e$$$ / 토 $$$세션.hira_cur_sat_s$$$~$$$세션.hira_cur_sat_e$$$ / 야간진료 $$$세션.hira_cur_ngt$$$}
+{$$$세션.hira_cur_name$$$ ($$$세션.hira_cur_addr$$$, $$$세션.hira_cur_tel$$$) 평일 $$$세션.hira_cur_mon_s$$$~$$$세션.hira_cur_mon_e$$$ / 토 $$$세션.hira_cur_sat_s$$$~$$$세션.hira_cur_sat_e$$$ / 야간진료 $$$세션.hira_cur_ngt$$$
+}
 문장::HIRA.HIRA요약문장
 {$$$세션.hira_region_name$$$ 병원 진료시간 (최근 $$$세션.hira_count$$$곳): $$$세션.hira_summary_lines$$$}
 문장::HIRA.HIRA요약문장_단일
