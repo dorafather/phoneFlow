@@ -13,6 +13,8 @@
   MOLIT.수신메시지.응답코드 == 200    처리.MOLIT응답분기처리
   ICN.수신메시지.응답코드 == 200    처리.ICN응답분기처리
   TOUR.수신메시지.응답코드 == 200    처리.TOUR응답분기처리
+  HIRA.수신메시지.응답코드 == 200    처리.HIRA목록응답처리
+  HIRA_DETAIL.수신메시지.응답코드 == 200    처리.HIRA상세응답처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -27,6 +29,7 @@
     함수.앞자리비교(cmd_인천공항,세션.chat_input_text,인천공항)
     함수.앞자리비교(cmd_행사,세션.chat_input_text,행사)
     함수.앞자리비교(cmd_주변행사,세션.chat_input_text,주변행사)
+    함수.앞자리비교(cmd_병원,세션.chat_input_text,병원)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -49,6 +52,8 @@
     처리.텔레그램행사명령처리
   그외그외(세션.cmd_주변행사 == 1)
     처리.텔레그램주변행사명령처리
+  그외그외(세션.cmd_병원 == 1)
+    처리.텔레그램병원명령처리
   그외
     전송.명령모름응답
 }
@@ -94,6 +99,7 @@
 행사 [계약년월] - 해당 월 전국 행사/공연/축제 조회
 행사 [지역명] [계약년월] - 해당 지역/월 행사/공연/축제 조회(17개 시도는 이름만 바로 가능, 그 외 세부지역은 드로워 > 행사 > 지역 선택에서 검색)
 주변행사 - 내 주변 행사/공연/축제 조회(드로워 > 행사 > 내 주변에서 위치 권한 허용 필요)
+병원 [지역] - 해당 지역 병원 요일별 진료시간/야간진료 여부 조회(최근 5곳, 드로워 > 병원 > 지역 선택에서 검색)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -3630,3 +3636,147 @@ $$$세션.keco_watch_alert_text$$$}
 {내 주변 5km 이내에는 행사/공연/축제 정보가 없습니다.}
 문장::TELEGRAM.TOUR주변위치없음문장
 {위치 정보를 가져오지 못했습니다. 드로워 > 행사 > 내 주변에서 위치 권한을 허용했는지 확인해주세요.}
+처리::TELEGRAM.텔레그램병원명령처리
+{
+  만약에(참)
+    함수.단어분리(hira_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.hira_cmd_word_list,1)
+    처리.HIRA명령파싱
+}
+처리::HIRA.HIRA명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(hira_reply_text,문장.HIRA파싱실패문장)
+    전송.HIRA응답전송
+  그외
+    함수.쪼개기(hira_region_parts,세션.cmd_rest,@)
+    처리.HIRA지역코드분기
+}
+처리::HIRA.HIRA지역코드분기
+{
+  만약에(세션.리스트.hira_region_parts.SIZE == 2)
+    함수.저장(hira_region_name,세션.리스트.hira_region_parts[0])
+    함수.저장(hira_sggu_cd,세션.리스트.hira_region_parts[1])
+    전송.HIRA목록조회전송
+  그외
+    함수.저장(hira_reply_text,문장.HIRA파싱실패문장)
+    전송.HIRA응답전송
+}
+전송::HIRA.HIRA목록조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.HIRA.domain
+  전송메시지.주소.경로 = /getHospBasisList
+  전송메시지.주소.파라미터[0].key = ServiceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = sgguCd
+  전송메시지.주소.파라미터[1].val = 세션.hira_sggu_cd
+  전송메시지.주소.파라미터[2].key = numOfRows
+  전송메시지.주소.파라미터[2].val = 5
+  전송메시지.주소.파라미터[3].key = pageNo
+  전송메시지.주소.파라미터[3].val = 1
+  전송메시지.주소.파라미터[4].key = _type
+  전송메시지.주소.파라미터[4].val = json
+}
+처리::HIRA.HIRA목록응답처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(hira_reply_text,문장.HIRA목록없음문장)
+    전송.HIRA응답전송
+  그외그외(수신메시지.response.body.totalCount == 1)
+    함수.저장(hira_single,1)
+    함수.저장(hira_count,0)
+    함수.저장(hira_cur_name,수신메시지.response.body.items.item.yadmNm)
+    함수.저장(hira_cur_addr,수신메시지.response.body.items.item.addr)
+    함수.저장(hira_cur_tel,수신메시지.response.body.items.item.telno)
+    함수.저장(hira_cur_ykiho,수신메시지.response.body.items.item.ykiho)
+    전송.HIRA상세조회전송
+  그외
+    함수.저장(hira_single,0)
+    함수.객체저장(hira_items,수신메시지.response.body.items.item)
+    함수.저장(hira_idx,0)
+    함수.저장(hira_count,0)
+    함수.저장(hira_summary_lines,없음)
+    처리.HIRA항목순회
+}
+처리::HIRA.HIRA항목순회
+{
+  만약에(세션.객체.hira_items[세션.hira_idx].ykiho == NULL)
+    함수.저장(hira_reply_text,문장.HIRA요약문장)
+    전송.HIRA응답전송
+  그외그외(세션.hira_count >= 5)
+    함수.저장(hira_reply_text,문장.HIRA요약문장)
+    전송.HIRA응답전송
+  그외
+    함수.저장(hira_cur_name,세션.객체.hira_items[세션.hira_idx].yadmNm)
+    함수.저장(hira_cur_addr,세션.객체.hira_items[세션.hira_idx].addr)
+    함수.저장(hira_cur_tel,세션.객체.hira_items[세션.hira_idx].telno)
+    함수.저장(hira_cur_ykiho,세션.객체.hira_items[세션.hira_idx].ykiho)
+    전송.HIRA상세조회전송
+}
+전송::HIRA.HIRA상세조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.HIRA_DETAIL.domain
+  전송메시지.주소.경로 = /getDtlInfo2.8
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = ykiho
+  전송메시지.주소.파라미터[1].val = 세션.hira_cur_ykiho
+  전송메시지.주소.파라미터[2].key = _type
+  전송메시지.주소.파라미터[2].val = json
+}
+처리::HIRA.HIRA상세응답처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(hira_cur_ngt,정보없음)
+    함수.저장(hira_cur_mon_s,-)
+    함수.저장(hira_cur_mon_e,-)
+    함수.저장(hira_cur_sat_s,-)
+    함수.저장(hira_cur_sat_e,-)
+    처리.HIRA상세결과반영
+  그외
+    함수.저장(hira_cur_ngt,수신메시지.response.body.items.item.emyNgtYn)
+    함수.저장(hira_cur_mon_s,수신메시지.response.body.items.item.trmtMonStart)
+    함수.저장(hira_cur_mon_e,수신메시지.response.body.items.item.trmtMonEnd)
+    함수.저장(hira_cur_sat_s,수신메시지.response.body.items.item.trmtSatStart)
+    함수.저장(hira_cur_sat_e,수신메시지.response.body.items.item.trmtSatEnd)
+    처리.HIRA상세결과반영
+}
+처리::HIRA.HIRA상세결과반영
+{
+  만약에(세션.hira_single == 1)
+    함수.저장(hira_summary_lines,문장.HIRA라인문장)
+    함수.저장(hira_reply_text,문장.HIRA요약문장_단일)
+    전송.HIRA응답전송
+  그외
+    처리.HIRA항목추가
+}
+처리::HIRA.HIRA항목추가
+{
+  만약에(세션.hira_count == 0)
+    함수.저장(hira_summary_lines,문장.HIRA라인문장)
+    함수.더하기(hira_count,세션.hira_count,1)
+    함수.더하기(hira_idx,세션.hira_idx,1)
+    처리.HIRA항목순회
+  그외
+    함수.붙이기(hira_summary_lines,|,문장.HIRA라인문장)
+    함수.더하기(hira_count,세션.hira_count,1)
+    함수.더하기(hira_idx,세션.hira_idx,1)
+    처리.HIRA항목순회
+}
+전송::HIRA.HIRA응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.hira_reply_text
+}
+문장::HIRA.HIRA라인문장
+{$$$세션.hira_cur_name$$$ ($$$세션.hira_cur_addr$$$, $$$세션.hira_cur_tel$$$) 평일 $$$세션.hira_cur_mon_s$$$~$$$세션.hira_cur_mon_e$$$ / 토 $$$세션.hira_cur_sat_s$$$~$$$세션.hira_cur_sat_e$$$ / 야간진료 $$$세션.hira_cur_ngt$$$}
+문장::HIRA.HIRA요약문장
+{$$$세션.hira_region_name$$$ 병원 진료시간 (최근 $$$세션.hira_count$$$곳): $$$세션.hira_summary_lines$$$}
+문장::HIRA.HIRA요약문장_단일
+{$$$세션.hira_region_name$$$ 병원 진료시간 (1곳): $$$세션.hira_summary_lines$$$}
+문장::HIRA.HIRA목록없음문장
+{$$$세션.hira_region_name$$$ 지역에 등록된 병원 정보가 없습니다.}
+문장::TELEGRAM.HIRA파싱실패문장
+{지역을 이해하지 못했습니다. 드로워 > 병원 > 지역 선택에서 검색해주세요.}

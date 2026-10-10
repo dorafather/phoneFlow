@@ -57,6 +57,13 @@
         {"label": "지역 선택", "insert": "행사 "},
         {"label": "내 주변", "insert": "주변행사 "}
       ]
+    },
+    {
+      "label": "병원",
+      "requires_section": "HIRA",
+      "items": [
+        {"label": "지역 선택", "insert": "병원 "}
+      ]
     }
   ]
 }
