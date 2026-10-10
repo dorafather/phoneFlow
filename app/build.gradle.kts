@@ -27,8 +27,8 @@ android {
         applicationId = "com.dorafather.phoneflow"
         minSdk = 24
         targetSdk = 34
-        versionCode = 16
-        versionName = "1.7.0"
+        versionCode = 17
+        versionName = "1.8.0"
 
         // 실기기 대부분을 커버하는 arm64-v8a 하나만(빌드 시간 단축).
         ndk {
