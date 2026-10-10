@@ -110,14 +110,11 @@ class MainActivity : ComponentActivity() {
             messages.add(ChatMessage(text = "엔진 초기화 실패: ${t.message}", fromUser = false))
         }
 
-        val commandGroups = loadCommandGroups(this)
-
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppRoot(
                         messages = messages,
-                        commandGroups = commandGroups,
                         filesDir = filesDir,
                         onSend = ::sendChatInput
                     )
@@ -164,7 +161,7 @@ class MainActivity : ComponentActivity() {
         // 복사" 규칙을 따른다 - addr.ini/rest.sce와 달리 이 파일은 앱이 직접 쓰지는
         // 않지만, 업데이트 시 새 데이터로 갱신하려면 앱 데이터 초기화가 필요하다는
         // 점은 동일한 제약(2026-10 rest.sce 교체 때와 같은 이유).
-        for (name in listOf("addr.ini", "rest.sce", "lawd_codes.db", "kma_grid.db")) {
+        for (name in listOf("addr.ini", "rest.sce", "commands.json", "lawd_codes.db", "kma_grid.db")) {
             val dest = File(filesDir, name)
             if (dest.exists()) continue
             assets.open(name).use { input ->
@@ -200,7 +197,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot(
     messages: List<ChatMessage>,
-    commandGroups: List<CommandGroup>,
     filesDir: File,
     onSend: (String) -> Unit
 ) {
@@ -254,7 +250,6 @@ private fun AppRoot(
         drawerContent = {
             ModalDrawerSheet {
                 CommandDrawerContent(
-                    groups = commandGroups,
                     filesDir = filesDir,
                     isDrawerOpen = drawerState.isOpen,
                     onCommandPicked = { insert ->
@@ -398,16 +393,16 @@ private val ITEM_DELETE_TEMPLATES: Map<String, (String) -> String> = mapOf(
 
 @Composable
 private fun CommandDrawerContent(
-    groups: List<CommandGroup>,
     filesDir: File,
     // "지역 조회" 하위트리의 등록 항목 목록(WatchlistStore.itemNamesForGroup)이
     // addr.ini를 즉시 읽긴 하지만, 드로워를 닫았다 다시 열기만 해서는 그 값을
     // 읽는 LazyColumn item 블록이 재실행되지 않아(expanded/expandedQueries
     // 상태가 안 바뀌어 recomposition 트리거가 없음) 새로 등록한 지역이 안
     // 보이는 채로 멈춰 있었다(2026-10-08 전국 검색 기능 검증 중 발견 - 접었다
-    // 펼치면 바로 반영되는 것으로 원인 확인). 파라미터 값 자체가 호출마다
-    // 바뀌면 이 함수 전체가 스킵되지 않고 다시 실행되므로, 쓰이진 않아도 이
-    // 파라미터로 드로워가 열릴 때마다 강제 재조회시킨다.
+    // 펼치면 바로 반영되는 것으로 원인 확인). isDrawerOpen을 remember 키로
+    // 써서, commands.json/addr.ini 기반 메뉴 목록(아래 groups)도 드로워를
+    // 열 때마다 강제로 다시 읽는다(2026-10-10 "행사 메뉴가 TOUR 섹션 삭제
+    // 후에도 그대로네?" 발견 - requires_section 필터링 참고).
     isDrawerOpen: Boolean,
     onCommandPicked: (String) -> Unit,
     onSettingsPicked: () -> Unit,
@@ -417,6 +412,7 @@ private fun CommandDrawerContent(
     onFestivalPickerRequested: () -> Unit,
     onNearbyFestivalRequested: () -> Unit
 ) {
+    val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
     val expandedQueries = remember { mutableStateListOf<String>() }
 

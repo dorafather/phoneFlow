@@ -51,6 +51,7 @@
     },
     {
       "label": "행사",
+      "requires_section": "TOUR",
       "items": [
         {"label": "조회", "insert": "행사 "},
         {"label": "지역 선택", "insert": "행사 "},

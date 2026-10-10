@@ -6,9 +6,9 @@ private const val RAW_BASE = "https://raw.githubusercontent.com/dorafather/phone
 
 /**
  * "시나리오 설정" 화면의 수동 "업데이트" 버튼 전용 - GitHub main 브랜치의
- * addr.ini/rest.sce 원문을 받아 기기에 적용한다(2026-10-10 dorafather 요청).
- * commands.json은 이번 범위 밖(남겨둔 숙제 - 결과보고 참고), 일일 자동 체크도
- * 이번 범위 밖("시나리오 타이머로 하자, 절전모드 때문에 일단 보류"로 범위 축소).
+ * addr.ini/rest.sce/commands.json 원문을 받아 기기에 적용한다(2026-10-10
+ * dorafather 요청). 일일 자동 체크는 이번 범위 밖("시나리오 타이머로 하자,
+ * 절전모드 때문에 일단 보류"로 범위 축소).
  *
  * addr.ini는 사용자가 직접 써넣은 값(서비스키/관심종목·관심지역)이 있어
  * GitHub 원문으로 그냥 덮어쓰면 전부 사라진다 - 그래서 GitHub 원문 텍스트를
@@ -21,6 +21,12 @@ private const val RAW_BASE = "https://raw.githubusercontent.com/dorafather/phone
  * 재호출을 무시함, 실측 확인), 실제로 바뀐 내용을 쓰려면 앱 프로세스
  * 재시작이 필요하다 - 그래서 호출자(ScenarioViewerScreen)가 restartNeeded로
  * 재시작 여부를 사용자에게 물어볼 수 있게 한다.
+ *
+ * commands.json도 사용자 데이터가 없어 그대로 덮어쓰지만, 이건 순수 Kotlin
+ * 쪽 데이터(CommandTree.loadAvailableCommandGroups)라 엔진 재시작 없이 드로워를
+ * 다음에 열 때 바로 반영된다 - restartNeeded 계산에는 넣지 않는다(2026-10-10
+ * dorafather가 "TOUR 지웠는데 메뉴는 그대로네?" 지적 - 예전엔 commands.json이
+ * APK assets에서만 읽혀 애초에 갱신 대상이 아니었다).
  */
 object ScenarioUpdateStore {
 
@@ -33,25 +39,29 @@ object ScenarioUpdateStore {
     private val PRESERVE_SECTIONS_SUFFIX = "_WATCHLIST"
 
     fun checkAndApply(filesDir: File, onResult: (UpdateResult) -> Unit) {
-        AndroidHttpClient.request("GET", "$RAW_BASE/addr.ini", emptyMap(), null) { addrResult ->
-            if (!addrResult.ok) {
-                onResult(UpdateResult(ok = false, restartNeeded = false, error = "addr.ini 다운로드 실패 (status=${addrResult.status})"))
-            } else {
-                AndroidHttpClient.request("GET", "$RAW_BASE/rest.sce", emptyMap(), null) { sceResult ->
-                    if (!sceResult.ok) {
-                        onResult(UpdateResult(ok = false, restartNeeded = false, error = "rest.sce 다운로드 실패 (status=${sceResult.status})"))
+        fetch("addr.ini") { addrResult ->
+            fetch("rest.sce") { sceResult ->
+                fetch("commands.json") { cmdResult ->
+                    val failed = listOf(addrResult, sceResult, cmdResult).firstOrNull { !it.ok }
+                    if (failed != null) {
+                        onResult(UpdateResult(ok = false, restartNeeded = false, error = "다운로드 실패 (status=${failed.status})"))
                     } else {
-                        onResult(applyDownloaded(filesDir, addrResult.body, sceResult.body))
+                        onResult(applyDownloaded(filesDir, addrResult.body, sceResult.body, cmdResult.body))
                     }
                 }
             }
         }
     }
 
-    private fun applyDownloaded(filesDir: File, remoteAddr: String, remoteSce: String): UpdateResult {
+    private fun fetch(fileName: String, onResult: (AndroidHttpClient.HttpResult) -> Unit) {
+        AndroidHttpClient.request("GET", "$RAW_BASE/$fileName", emptyMap(), null, onResult)
+    }
+
+    private fun applyDownloaded(filesDir: File, remoteAddr: String, remoteSce: String, remoteCmd: String): UpdateResult {
         return try {
             val addrFile = File(filesDir, "addr.ini")
             val sceFile = File(filesDir, "rest.sce")
+            val cmdFile = File(filesDir, "commands.json")
 
             // GitHub 원문(raw.githubusercontent.com)은 git 블롭 그대로라 LF뿐인데,
             // 이 저장소는 core.autocrlf=true라 기기에 번들된 복사본(앱 설치 시
@@ -69,6 +79,10 @@ object ScenarioUpdateStore {
             val localSce = if (sceFile.exists()) sceFile.readText() else ""
             val sceChanged = localSce != normalizedSce
             if (sceChanged) sceFile.writeText(normalizedSce)
+
+            // commands.json은 JSON이라 파싱에 줄바꿈 종류가 영향을 주지 않고,
+            // 드로워가 매번 새로 읽어 restartNeeded 판단도 필요 없어 그냥 덮어쓴다.
+            cmdFile.writeText(toCrlf(remoteCmd))
 
             UpdateResult(ok = true, restartNeeded = sceChanged)
         } catch (t: Throwable) {
