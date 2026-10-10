@@ -199,10 +199,23 @@ fun SettingsScreen(filesDir: java.io.File) {
 /** 서비스당 최소 1건(numOfRows=1 등)짜리 가벼운 조회로 키 인증 여부만 확인한다.
  *  외부 호출이므로 [AndroidHttpClient]를 DSL 엔진을 거치지 않고 직접 쓴다 -
  *  엔진 세션/채팅 UI를 전혀 건드리지 않는 순수 점검용 호출. 점검 URL 자체는
- *  이제 addr.ini의 health_check_path=로부터 [ServiceCatalogStore]가 조립한다. */
+ *  이제 addr.ini의 health_check_path=로부터 [ServiceCatalogStore]가 조립한다.
+ *
+ *  하나씩 순차로만 호출한다(이전 호출의 콜백이 와야 다음 호출 시작) - 전부
+ *  동시에 쏘면 [AndroidHttpClient]의 고정 스레드풀(4개)을 이 점검 하나가
+ *  다 채워버려서, 그 사이 들어오는 엔진(rest.sce)발 HTTP 요청이 스레드를
+ *  못 받고 밀리다가 응답이 전혀 안 오는 것처럼 보이는 현상이 실기기에서
+ *  재현됐다(2026-10-11, 서비스 9개 동시 점검 직후 모든 채팅 조회가 먹통).
+ *  순차 호출이면 이 점검 하나가 쓰는 스레드는 항상 최대 1개뿐이다. */
 private fun runHealthChecks(targets: List<ServiceCatalogStore.ServiceEntry>, onResult: (String, Boolean) -> Unit) {
-    targets.forEach { svc ->
-        val url = svc.healthCheckUrl ?: return@forEach
+    fun runFrom(index: Int) {
+        if (index >= targets.size) return
+        val svc = targets[index]
+        val url = svc.healthCheckUrl
+        if (url == null) {
+            runFrom(index + 1)
+            return
+        }
         AndroidHttpClient.request("GET", url, emptyMap(), null) { result ->
             // data.go.kr 에러 응답은 실측으로 확인된 공통 패턴상 "_ERROR"로
             //끝나는 errMsg를 담는다(SERVICE_KEY_IS_NOT_REGISTERED_ERROR 등,
@@ -211,6 +224,8 @@ private fun runHealthChecks(targets: List<ServiceCatalogStore.ServiceEntry>, onR
             // 이미 끝난 키만 갖고 있어 실측하지 못했다(산출물에 명시).
             val ok = result.ok && !result.body.contains("_ERROR")
             onResult(svc.key, ok)
+            runFrom(index + 1)
         }
     }
+    runFrom(0)
 }
