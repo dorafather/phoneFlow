@@ -69,26 +69,23 @@ fun ScenarioViewerScreen(filesDir: File) {
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
         item {
+            Text(
+                "한글 시나리오 내용 - 총 ${lines.size}줄 (읽기 전용)",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    "한글 시나리오 내용 - 총 ${lines.size}줄 (읽기 전용)",
-                    style = MaterialTheme.typography.bodySmall
-                )
                 Button(onClick = { lines = readScenarioLines(filesDir) }) {
                     Text("새로고침")
                 }
-            }
-            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                 OutlinedButton(onClick = {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(REST_SCE_GITHUB_URL)))
                 }) {
-                    Text("GitHub에서 원문 보기")
+                    Text("Git원문")
                 }
-            }
-            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                 Button(
                     enabled = !checking,
                     onClick = {
