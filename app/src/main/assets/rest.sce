@@ -15,6 +15,7 @@
   TOUR.수신메시지.응답코드 == 200    처리.TOUR응답분기처리
   HIRA.수신메시지.응답코드 == 200    처리.HIRA목록응답처리
   HIRA_DETAIL.수신메시지.응답코드 == 200    처리.HIRA상세응답처리
+  EGEN.수신메시지.응답코드 == 200    처리.EGEN응답분기처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -30,6 +31,8 @@
     함수.앞자리비교(cmd_행사,세션.chat_input_text,행사)
     함수.앞자리비교(cmd_주변행사,세션.chat_input_text,주변행사)
     함수.앞자리비교(cmd_병원,세션.chat_input_text,병원)
+    함수.앞자리비교(cmd_응급실,세션.chat_input_text,응급실)
+    함수.앞자리비교(cmd_당직병원,세션.chat_input_text,당직병원)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -54,6 +57,10 @@
     처리.텔레그램주변행사명령처리
   그외그외(세션.cmd_병원 == 1)
     처리.텔레그램병원명령처리
+  그외그외(세션.cmd_응급실 == 1)
+    처리.텔레그램응급실명령처리
+  그외그외(세션.cmd_당직병원 == 1)
+    처리.텔레그램당직병원명령처리
   그외
     전송.명령모름응답
 }
@@ -100,6 +107,8 @@
 행사 [지역명] [계약년월] - 해당 지역/월 행사/공연/축제 조회(17개 시도는 이름만 바로 가능, 그 외 세부지역은 드로워 > 행사 > 지역 선택에서 검색)
 주변행사 - 내 주변 행사/공연/축제 조회(드로워 > 행사 > 내 주변에서 위치 권한 허용 필요)
 병원 [지역] - 해당 지역 병원 요일별 진료시간/야간진료 여부 조회(최근 5곳, 드로워 > 병원 > 지역 선택에서 검색)
+응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(예: 응급실 서울특별시 종로구)
+당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 예: 당직병원 서울특별시 종로구)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -3807,3 +3816,306 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.hira_region_name$$$ 지역에 등록된 병원 정보가 없습니다.}
 문장::TELEGRAM.HIRA파싱실패문장
 {지역을 이해하지 못했습니다. 드로워 > 병원 > 지역 선택에서 검색해주세요.}
+처리::EGEN.EGEN응답분기처리
+{
+  만약에(세션.egen_mode == 가용병상)
+    처리.EGEN가용병상응답처리
+  그외그외(세션.egen_mode == 목록)
+    처리.EGEN목록응답처리
+  그외
+    처리.EGEN상세응답처리
+}
+처리::TELEGRAM.텔레그램응급실명령처리
+{
+  만약에(참)
+    함수.단어분리(egenbed_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(egenbed_rest,세션.리스트.egenbed_cmd_word_list,1)
+    처리.EGEN가용병상명령파싱
+}
+처리::EGEN.EGEN가용병상명령파싱
+{
+  만약에(세션.egenbed_rest == NULL)
+    함수.저장(egen_reply_text,문장.EGEN파싱실패문장)
+    전송.EGEN응답전송
+  그외
+    함수.단어분리(egen_region_word_list,세션.egenbed_rest)
+    처리.EGEN가용병상지역분기
+}
+처리::EGEN.EGEN가용병상지역분기
+{
+  만약에(세션.리스트.egen_region_word_list.SIZE == 2)
+    함수.저장(egen_stage1,세션.리스트.egen_region_word_list[0])
+    함수.저장(egen_stage2,세션.리스트.egen_region_word_list[1])
+    함수.저장(egen_mode,가용병상)
+    전송.EGEN가용병상조회전송
+  그외
+    함수.저장(egen_reply_text,문장.EGEN파싱실패문장)
+    전송.EGEN응답전송
+}
+전송::EGEN.EGEN가용병상조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.EGEN.domain
+  전송메시지.주소.경로 = /getEmrrmRltmUsefulSckbdInfoInqire
+  전송메시지.주소.파라미터[0].key = ServiceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = STAGE1
+  전송메시지.주소.파라미터[1].val = 세션.egen_stage1
+  전송메시지.주소.파라미터[2].key = STAGE2
+  전송메시지.주소.파라미터[2].val = 세션.egen_stage2
+  전송메시지.주소.파라미터[3].key = numOfRows
+  전송메시지.주소.파라미터[3].val = 5
+  전송메시지.주소.파라미터[4].key = pageNo
+  전송메시지.주소.파라미터[4].val = 1
+  전송메시지.주소.파라미터[5].key = _type
+  전송메시지.주소.파라미터[5].val = json
+}
+처리::EGEN.EGEN가용병상응답처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(egen_reply_text,문장.EGEN가용병상없음문장)
+    전송.EGEN응답전송
+  그외그외(수신메시지.response.body.totalCount == 1)
+    함수.저장(egen_cur_name,수신메시지.response.body.items.item.dutyName)
+    함수.저장(egen_cur_tel,수신메시지.response.body.items.item.dutyTel3)
+    함수.저장(egen_cur_er,수신메시지.response.body.items.item.hvec)
+    함수.저장(egen_cur_op,수신메시지.response.body.items.item.hvoc)
+    함수.저장(egen_cur_gen,수신메시지.response.body.items.item.hvgc)
+    함수.저장(egen_bed_count,1)
+    함수.저장(egen_summary_lines,문장.EGEN가용병상라인문장)
+    함수.저장(egen_reply_text,문장.EGEN가용병상요약문장)
+    전송.EGEN응답전송
+  그외
+    함수.객체저장(egen_bed_items,수신메시지.response.body.items.item)
+    함수.저장(egen_bed_idx,0)
+    함수.저장(egen_bed_count,0)
+    처리.EGEN가용병상항목순회
+}
+처리::EGEN.EGEN가용병상항목순회
+{
+  만약에(세션.객체.egen_bed_items[세션.egen_bed_idx].hpid == NULL)
+    함수.저장(egen_reply_text,문장.EGEN가용병상요약문장)
+    전송.EGEN응답전송
+  그외그외(세션.egen_bed_count >= 5)
+    함수.저장(egen_reply_text,문장.EGEN가용병상요약문장)
+    전송.EGEN응답전송
+  그외
+    함수.저장(egen_cur_name,세션.객체.egen_bed_items[세션.egen_bed_idx].dutyName)
+    함수.저장(egen_cur_tel,세션.객체.egen_bed_items[세션.egen_bed_idx].dutyTel3)
+    함수.저장(egen_cur_er,세션.객체.egen_bed_items[세션.egen_bed_idx].hvec)
+    함수.저장(egen_cur_op,세션.객체.egen_bed_items[세션.egen_bed_idx].hvoc)
+    함수.저장(egen_cur_gen,세션.객체.egen_bed_items[세션.egen_bed_idx].hvgc)
+    처리.EGEN가용병상항목추가
+}
+처리::EGEN.EGEN가용병상항목추가
+{
+  만약에(세션.egen_bed_count == 0)
+    함수.저장(egen_summary_lines,문장.EGEN가용병상라인문장)
+    함수.더하기(egen_bed_count,세션.egen_bed_count,1)
+    함수.더하기(egen_bed_idx,세션.egen_bed_idx,1)
+    처리.EGEN가용병상항목순회
+  그외
+    함수.붙이기(egen_summary_lines,문장.EGEN가용병상라인문장)
+    함수.더하기(egen_bed_count,세션.egen_bed_count,1)
+    함수.더하기(egen_bed_idx,세션.egen_bed_idx,1)
+    처리.EGEN가용병상항목순회
+}
+처리::TELEGRAM.텔레그램당직병원명령처리
+{
+  만약에(참)
+    함수.단어분리(egendt_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(egendt_rest,세션.리스트.egendt_cmd_word_list,1)
+    처리.EGEN당직명령파싱
+}
+처리::EGEN.EGEN당직명령파싱
+{
+  만약에(세션.egendt_rest == NULL)
+    함수.저장(egen_reply_text,문장.EGEN파싱실패문장)
+    전송.EGEN응답전송
+  그외
+    함수.단어분리(egendt_region_word_list,세션.egendt_rest)
+    처리.EGEN당직지역분기
+}
+처리::EGEN.EGEN당직지역분기
+{
+  만약에(세션.리스트.egendt_region_word_list.SIZE == 2)
+    함수.저장(egen_stage1,세션.리스트.egendt_region_word_list[0])
+    함수.저장(egen_region_name,세션.리스트.egendt_region_word_list[1])
+    함수.날짜(egen_today_wd,%u)
+    함수.저장(egen_mode,목록)
+    전송.EGEN목록조회전송
+  그외
+    함수.저장(egen_reply_text,문장.EGEN파싱실패문장)
+    전송.EGEN응답전송
+}
+전송::EGEN.EGEN목록조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.EGEN.domain
+  전송메시지.주소.경로 = /getEgytListInfoInqire
+  전송메시지.주소.파라미터[0].key = ServiceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = Q0
+  전송메시지.주소.파라미터[1].val = 세션.egen_stage1
+  전송메시지.주소.파라미터[2].key = Q1
+  전송메시지.주소.파라미터[2].val = 세션.egen_region_name
+  전송메시지.주소.파라미터[3].key = QT
+  전송메시지.주소.파라미터[3].val = 세션.egen_today_wd
+  전송메시지.주소.파라미터[4].key = numOfRows
+  전송메시지.주소.파라미터[4].val = 5
+  전송메시지.주소.파라미터[5].key = pageNo
+  전송메시지.주소.파라미터[5].val = 1
+  전송메시지.주소.파라미터[6].key = _type
+  전송메시지.주소.파라미터[6].val = json
+}
+처리::EGEN.EGEN목록응답처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(egen_reply_text,문장.EGEN당직목록없음문장)
+    전송.EGEN응답전송
+  그외그외(수신메시지.response.body.totalCount == 1)
+    함수.저장(egen_single,1)
+    함수.저장(egendt_count,0)
+    함수.저장(egen_cur_name,수신메시지.response.body.items.item.dutyName)
+    함수.저장(egen_cur_tel,수신메시지.response.body.items.item.dutyTel1)
+    함수.저장(egen_cur_hpid,수신메시지.response.body.items.item.hpid)
+    함수.저장(egen_mode,상세)
+    전송.EGEN상세조회전송
+  그외
+    함수.저장(egen_single,0)
+    함수.객체저장(egendt_items,수신메시지.response.body.items.item)
+    함수.저장(egendt_idx,0)
+    함수.저장(egendt_count,0)
+    처리.EGEN당직항목순회
+}
+처리::EGEN.EGEN당직항목순회
+{
+  만약에(세션.객체.egendt_items[세션.egendt_idx].hpid == NULL)
+    함수.저장(egen_reply_text,문장.EGEN당직요약문장)
+    전송.EGEN응답전송
+  그외그외(세션.egendt_count >= 5)
+    함수.저장(egen_reply_text,문장.EGEN당직요약문장)
+    전송.EGEN응답전송
+  그외
+    함수.저장(egen_cur_name,세션.객체.egendt_items[세션.egendt_idx].dutyName)
+    함수.저장(egen_cur_tel,세션.객체.egendt_items[세션.egendt_idx].dutyTel1)
+    함수.저장(egen_cur_hpid,세션.객체.egendt_items[세션.egendt_idx].hpid)
+    함수.저장(egen_mode,상세)
+    전송.EGEN상세조회전송
+}
+전송::EGEN.EGEN상세조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.EGEN.domain
+  전송메시지.주소.경로 = /getEgytBassInfoInqire
+  전송메시지.주소.파라미터[0].key = ServiceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = HPID
+  전송메시지.주소.파라미터[1].val = 세션.egen_cur_hpid
+  전송메시지.주소.파라미터[2].key = _type
+  전송메시지.주소.파라미터[2].val = json
+}
+처리::EGEN.EGEN상세응답처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(egen_cur_mon_s,-)
+    함수.저장(egen_cur_mon_e,-)
+    함수.저장(egen_cur_sat_s,-)
+    함수.저장(egen_cur_sat_e,-)
+    함수.저장(egen_cur_sun_s,-)
+    함수.저장(egen_cur_sun_e,-)
+    함수.저장(egen_cur_hol_s,-)
+    함수.저장(egen_cur_hol_e,-)
+    처리.EGEN당직결과반영
+  그외
+    처리.EGEN필드_mon확인
+}
+처리::EGEN.EGEN필드_mon확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime1s == NULL)
+    함수.저장(egen_cur_mon_s,-)
+    함수.저장(egen_cur_mon_e,-)
+    처리.EGEN필드_sat확인
+  그외
+    함수.저장(egen_cur_mon_s,수신메시지.response.body.items.item.dutyTime1s)
+    함수.저장(egen_cur_mon_e,수신메시지.response.body.items.item.dutyTime1c)
+    처리.EGEN필드_sat확인
+}
+처리::EGEN.EGEN필드_sat확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime6s == NULL)
+    함수.저장(egen_cur_sat_s,-)
+    함수.저장(egen_cur_sat_e,-)
+    처리.EGEN필드_sun확인
+  그외
+    함수.저장(egen_cur_sat_s,수신메시지.response.body.items.item.dutyTime6s)
+    함수.저장(egen_cur_sat_e,수신메시지.response.body.items.item.dutyTime6c)
+    처리.EGEN필드_sun확인
+}
+처리::EGEN.EGEN필드_sun확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime7s == NULL)
+    함수.저장(egen_cur_sun_s,-)
+    함수.저장(egen_cur_sun_e,-)
+    처리.EGEN필드_hol확인
+  그외
+    함수.저장(egen_cur_sun_s,수신메시지.response.body.items.item.dutyTime7s)
+    함수.저장(egen_cur_sun_e,수신메시지.response.body.items.item.dutyTime7c)
+    처리.EGEN필드_hol확인
+}
+처리::EGEN.EGEN필드_hol확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime8s == NULL)
+    함수.저장(egen_cur_hol_s,-)
+    함수.저장(egen_cur_hol_e,-)
+    처리.EGEN당직결과반영
+  그외
+    함수.저장(egen_cur_hol_s,수신메시지.response.body.items.item.dutyTime8s)
+    함수.저장(egen_cur_hol_e,수신메시지.response.body.items.item.dutyTime8c)
+    처리.EGEN당직결과반영
+}
+처리::EGEN.EGEN당직결과반영
+{
+  만약에(세션.egen_single == 1)
+    함수.저장(egendt_summary_lines,문장.EGEN당직라인문장)
+    함수.저장(egen_reply_text,문장.EGEN당직요약문장_단일)
+    전송.EGEN응답전송
+  그외
+    처리.EGEN당직항목추가
+}
+처리::EGEN.EGEN당직항목추가
+{
+  만약에(세션.egendt_count == 0)
+    함수.저장(egendt_summary_lines,문장.EGEN당직라인문장)
+    함수.더하기(egendt_count,세션.egendt_count,1)
+    함수.더하기(egendt_idx,세션.egendt_idx,1)
+    처리.EGEN당직항목순회
+  그외
+    함수.붙이기(egendt_summary_lines,문장.EGEN당직라인문장)
+    함수.더하기(egendt_count,세션.egendt_count,1)
+    함수.더하기(egendt_idx,세션.egendt_idx,1)
+    처리.EGEN당직항목순회
+}
+전송::EGEN.EGEN응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.egen_reply_text
+}
+문장::EGEN.EGEN가용병상라인문장
+{$$$세션.egen_cur_name$$$ ($$$세션.egen_cur_tel$$$) 응급실 $$$세션.egen_cur_er$$$ / 수술실 $$$세션.egen_cur_op$$$ / 입원실 $$$세션.egen_cur_gen$$$
+}
+문장::EGEN.EGEN가용병상요약문장
+{$$$세션.egen_stage2$$$ 응급실 실시간 가용병상 (최근 $$$세션.egen_bed_count$$$곳): $$$세션.egen_summary_lines$$$}
+문장::EGEN.EGEN가용병상없음문장
+{$$$세션.egen_stage2$$$ 지역에 조회된 응급의료기관이 없습니다.}
+문장::EGEN.EGEN당직라인문장
+{$$$세션.egen_cur_name$$$ ($$$세션.egen_cur_tel$$$) 평일 $$$세션.egen_cur_mon_s$$$~$$$세션.egen_cur_mon_e$$$ / 토 $$$세션.egen_cur_sat_s$$$~$$$세션.egen_cur_sat_e$$$ / 일 $$$세션.egen_cur_sun_s$$$~$$$세션.egen_cur_sun_e$$$ / 공휴일 $$$세션.egen_cur_hol_s$$$~$$$세션.egen_cur_hol_e$$$
+}
+문장::EGEN.EGEN당직요약문장
+{$$$세션.egen_region_name$$$ 응급의료기관 진료시간 (최근 $$$세션.egendt_count$$$곳): $$$세션.egendt_summary_lines$$$}
+문장::EGEN.EGEN당직요약문장_단일
+{$$$세션.egen_region_name$$$ 응급의료기관 진료시간 (1곳): $$$세션.egendt_summary_lines$$$}
+문장::EGEN.EGEN당직목록없음문장
+{$$$세션.egen_region_name$$$ 지역에 등록된 응급의료기관 정보가 없습니다.}
+문장::TELEGRAM.EGEN파싱실패문장
+{지역을 이해하지 못했습니다. "응급실 [시도] [시군구]" 또는 "당직병원 [시도] [시군구]" 형태로 입력해주세요.}

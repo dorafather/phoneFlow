@@ -64,6 +64,20 @@
       "items": [
         {"label": "지역 선택", "insert": "병원 "}
       ]
+    },
+    {
+      "label": "응급실",
+      "requires_section": "EGEN",
+      "items": [
+        {"label": "가용병상 조회", "insert": "응급실 "}
+      ]
+    },
+    {
+      "label": "당직병원",
+      "requires_section": "EGEN",
+      "items": [
+        {"label": "지역 조회", "insert": "당직병원 "}
+      ]
     }
   ]
 }
