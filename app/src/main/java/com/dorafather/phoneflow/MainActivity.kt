@@ -301,7 +301,7 @@ private fun AppRoot(
                         Text(
                             when (screen) {
                                 Screen.SETTINGS -> "설정"
-                                Screen.SCENARIO -> "한글 시나리오 내용"
+                                Screen.SCENARIO -> "시나리오 설정"
                                 Screen.LAWD_PICKER -> "지역 검색"
                                 Screen.KMA_PICKER -> "지역 검색"
                                 Screen.FESTIVAL_PICKER -> "지역 검색"
@@ -577,7 +577,7 @@ private fun CommandDrawerContent(
                 .clickableCompat { onSettingsPicked() }
         )
         Text(
-            "📄 한글 시나리오 내용 보기",
+            "📄 시나리오 설정",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
                 .fillMaxWidth()
