@@ -65,7 +65,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER }
+private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -207,6 +207,9 @@ private fun AppRoot(
     // 맨 끝에 둘 수 있다(업무지침 "커서를 맨 끝에 두고 사용자가 인자를
     // 채워 전송" 요구사항) - 일반 String 상태로는 커서 위치를 보장할 수 없다.
     var input by remember { mutableStateOf(TextFieldValue("")) }
+    // EGEN_PICKER 화면 하나를 "응급실"/"당직병원" 둘이 같이 쓴다 - 드로워에서
+    // 어느 쪽을 눌렀는지만 기억해뒀다가 고른 지역을 그 명령어 뒤에 붙인다.
+    var egenPickerPrefix by remember { mutableStateOf("응급실 ") }
 
     // "행사 > 내 주변"(GPS 기반 locationBasedList2, 2026-10-09 추가) - 위치
     // 권한이 이미 있으면 바로 마지막 위치를 읽어 "주변행사 위도@경도 " 명령을
@@ -288,6 +291,11 @@ private fun AppRoot(
                     onHiraPickerRequested = {
                         screen = Screen.HIRA_PICKER
                         scope.launch { drawerState.close() }
+                    },
+                    onEgenPickerRequested = { prefix ->
+                        egenPickerPrefix = prefix
+                        screen = Screen.EGEN_PICKER
+                        scope.launch { drawerState.close() }
                     }
                 )
             }
@@ -305,6 +313,7 @@ private fun AppRoot(
                                 Screen.KMA_PICKER -> "지역 검색"
                                 Screen.FESTIVAL_PICKER -> "지역 검색"
                                 Screen.HIRA_PICKER -> "지역 검색"
+                                Screen.EGEN_PICKER -> "지역 검색"
                                 Screen.CHAT -> "phoneFlow"
                             }
                         )
@@ -356,6 +365,13 @@ private fun AppRoot(
                         // 병원도 행사와 마찬가지로 관심지역 등록 없는 조회 전용 -
                         // "병원 [지역]" 형태로 채우면 바로 전송 가능(추가 인자 없음).
                         val insert = "병원 $token"
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        screen = Screen.CHAT
+                    }
+                    Screen.EGEN_PICKER -> EgenPickerScreen(filesDir = filesDir) { token ->
+                        // 응급실/당직병원 둘 다 여기로 오고, egenPickerPrefix로 어느
+                        // 명령어였는지만 구분한다(둘 다 관심지역 등록 없는 조회 전용).
+                        val insert = "$egenPickerPrefix$token"
                         input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
@@ -423,7 +439,8 @@ private fun CommandDrawerContent(
     onKmaPickerRequested: () -> Unit,
     onFestivalPickerRequested: () -> Unit,
     onNearbyFestivalRequested: () -> Unit,
-    onHiraPickerRequested: () -> Unit
+    onHiraPickerRequested: () -> Unit,
+    onEgenPickerRequested: (String) -> Unit
 ) {
     val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
@@ -572,6 +589,31 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onHiraPickerRequested() }
+                                )
+                            }
+                        } else if (group.label == "응급실" && cmd.label == "가용병상 조회") {
+                            // EGEN도 같은 지역 검색 화면 패턴 - "시도+시군구를 정확한
+                            // 공식 명칭으로 직접 타이핑"이 너무 깨지기 쉬워서(2026-10-11
+                            // "서울시"/"서울특별시" 단독 입력 모두 실패) 병원처럼 검색 후
+                            // 선택으로 바꿨다. EgenPickerScreen이 "이름@시도명" 토큰을
+                            // 만들어주면 rest.sce가 @로 분리해서 바로 쓴다.
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onEgenPickerRequested("응급실 ") }
+                                )
+                            }
+                        } else if (group.label == "당직병원" && cmd.label == "지역 조회") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onEgenPickerRequested("당직병원 ") }
                                 )
                             }
                         } else {

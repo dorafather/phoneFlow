@@ -107,8 +107,8 @@
 행사 [지역명] [계약년월] - 해당 지역/월 행사/공연/축제 조회(17개 시도는 이름만 바로 가능, 그 외 세부지역은 드로워 > 행사 > 지역 선택에서 검색)
 주변행사 - 내 주변 행사/공연/축제 조회(드로워 > 행사 > 내 주변에서 위치 권한 허용 필요)
 병원 [지역] - 해당 지역 병원 요일별 진료시간/야간진료 여부 조회(최근 5곳, 드로워 > 병원 > 지역 선택에서 검색)
-응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(예: 응급실 서울특별시 종로구)
-당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 예: 당직병원 서울특별시 종로구)
+응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(드로워 > 응급실 > 가용병상 조회에서 검색 권장, 직접 입력 시 정확한 공식 명칭 필요: 예) 응급실 서울특별시 종로구)
+당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 드로워 > 당직병원 > 지역 조회에서 검색 권장, 직접 입력 예) 당직병원 서울특별시 종로구)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -3838,6 +3838,18 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(egen_reply_text,문장.EGEN파싱실패문장)
     전송.EGEN응답전송
   그외
+    함수.부분비교(egenbed_has_at,세션.egenbed_rest,@)
+    처리.EGEN가용병상형식분기
+}
+처리::EGEN.EGEN가용병상형식분기
+{
+  만약에(세션.egenbed_has_at == 1)
+    함수.쪼개기(egenbed_at_parts,세션.egenbed_rest,@)
+    함수.저장(egen_stage2,세션.리스트.egenbed_at_parts[0])
+    함수.저장(egen_stage1,세션.리스트.egenbed_at_parts[1])
+    함수.저장(egen_mode,가용병상)
+    전송.EGEN가용병상조회전송
+  그외
     함수.단어분리(egen_region_word_list,세션.egenbed_rest)
     처리.EGEN가용병상지역분기
 }
@@ -3932,6 +3944,19 @@ $$$세션.keco_watch_alert_text$$$}
   만약에(세션.egendt_rest == NULL)
     함수.저장(egen_reply_text,문장.EGEN파싱실패문장)
     전송.EGEN응답전송
+  그외
+    함수.부분비교(egendt_has_at,세션.egendt_rest,@)
+    처리.EGEN당직형식분기
+}
+처리::EGEN.EGEN당직형식분기
+{
+  만약에(세션.egendt_has_at == 1)
+    함수.쪼개기(egendt_at_parts,세션.egendt_rest,@)
+    함수.저장(egen_region_name,세션.리스트.egendt_at_parts[0])
+    함수.저장(egen_stage1,세션.리스트.egendt_at_parts[1])
+    함수.날짜(egen_today_wd,%u)
+    함수.저장(egen_mode,목록)
+    전송.EGEN목록조회전송
   그외
     함수.단어분리(egendt_region_word_list,세션.egendt_rest)
     처리.EGEN당직지역분기
