@@ -355,9 +355,16 @@ private fun AppRoot(
                     }
                     Screen.FESTIVAL_PICKER -> FestivalPickerScreen(filesDir = filesDir) { token ->
                         // 행사는 관심지역 등록이 없는 조회 전용 기능이라 "지역추가"가
-                        // 아니라 "행사 [지역] [계약년월]" 1회성 조회 형태로 바로 채운다 -
-                        // 계약년월은 사용자가 이어서 입력.
-                        val insert = "행사 $token "
+                        // 아니라 "행사 [지역] [계약년월]" 1회성 조회 형태로 바로 채운다.
+                        // 계약년월을 비워두고 사용자가 직접 입력하게 했었는데, "조회"/
+                        // "내 주변"은 아무 입력 없이 바로 이번달이 나오는 것과 달리
+                        // 이 경로만 "계약년월 형식을 이해하지 못했습니다"로 막혀서
+                        // 드로워 메뉴 4갈래의 일관성이 깨져 있었다(2026-10-12 피드백) -
+                        // 다른 경로들과 똑같이 이번달을 기본값으로 채워서 고르자마자
+                        // 바로 조회 가능하게 통일했다(원하면 전송 전에 직접 수정 가능).
+                        val thisMonth = java.text.SimpleDateFormat("yyyyMM", java.util.Locale.KOREA)
+                            .format(java.util.Date())
+                        val insert = "행사 $token $thisMonth"
                         input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
@@ -390,10 +397,17 @@ private fun AppRoot(
 // 재사용했다. 주식은 그런 단건 조회 명령이 rest.sce에 아예 없어서(기존
 // "관심종목 조회"는 항상 전체 목록) "주식 시세 [종목명]" 명령을 rest.sce에
 // 새로 추가했다(2026-10-03 "주식도 똑같이 해줘" 요청).
+// 네 그룹 다 "조회"류 리프 하나가 등록된 항목을 펼쳐 보여주는 역할까지
+// 겸한다(2026-10-12 "미세먼지도 주식처럼 조회 누르면 바로 등록 지역이
+// 펼쳐지게 통일하자" 피드백) - 기존엔 주식만 그랬고 기상청/미세먼지/
+// 실거래가는 "날씨"/"조회"가 기본지역 단건조회용 별도 리프였고 "지역 조회"가
+// 따로 펼침 역할이었다(리프 4개, 불일치) - 이제 세 그룹 다 "지역 조회" 리프
+// 자체를 없애고 기본 리프가 펼침 역할을 겸하도록 통일했다(리프 3개로 축소,
+// 주식과 동일 구조).
 private val LEAF_LABEL_TO_SUBTREE = mapOf(
-    "기상청" to "지역 조회",
-    "미세먼지" to "지역 조회",
-    "실거래가" to "지역 조회",
+    "기상청" to "날씨",
+    "미세먼지" to "조회",
+    "실거래가" to "조회",
     "주식" to "관심종목 조회",
 )
 private val ITEM_QUERY_TEMPLATES: Map<String, (String) -> String> = mapOf(
