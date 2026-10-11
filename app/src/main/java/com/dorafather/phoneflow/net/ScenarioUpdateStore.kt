@@ -116,7 +116,10 @@ object ScenarioUpdateStore {
             val idx = trimmed.indexOf('=')
             if (idx <= 0) continue
             val key = trimmed.substring(0, idx).trim()
-            val preserve = (section == "K_DATA" && key == "service_key") || section.endsWith(PRESERVE_SECTIONS_SUFFIX)
+            // service_key=는 어느 공급자 섹션(K_DATA/KOBIS/EX 등)에 있든 전부
+            // 사용자 소유 값이라 보존한다(2026-10-12 "공급자별 인증키" 설계 -
+            // 예전엔 K_DATA 하나만 하드코딩했었음).
+            val preserve = key == "service_key" || section.endsWith(PRESERVE_SECTIONS_SUFFIX)
             if (!preserve) continue
 
             val localValue = local[section]?.get(key) ?: continue

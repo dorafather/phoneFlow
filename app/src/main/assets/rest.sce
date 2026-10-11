@@ -17,6 +17,7 @@
   HIRA_DETAIL.수신메시지.응답코드 == 200    처리.HIRA상세응답처리
   EGEN.수신메시지.응답코드 == 200    처리.EGEN응답분기처리
   NTS.수신메시지.응답코드 == 200    처리.NTS응답처리
+  KOBIS.수신메시지.응답코드 == 200    처리.KOBIS응답처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -35,6 +36,7 @@
     함수.앞자리비교(cmd_응급실,세션.chat_input_text,응급실)
     함수.앞자리비교(cmd_당직병원,세션.chat_input_text,당직병원)
     함수.앞자리비교(cmd_사업자,세션.chat_input_text,사업자)
+    함수.앞자리비교(cmd_영화,세션.chat_input_text,영화)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -65,6 +67,8 @@
     처리.텔레그램당직병원명령처리
   그외그외(세션.cmd_사업자 == 1)
     처리.텔레그램사업자명령처리
+  그외그외(세션.cmd_영화 == 1)
+    처리.텔레그램영화명령처리
   그외
     전송.명령모름응답
 }
@@ -114,6 +118,8 @@
 응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(드로워 > 응급실 > 가용병상 조회에서 검색 권장, 직접 입력 시 정확한 공식 명칭 필요: 예) 응급실 서울특별시 종로구)
 당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 드로워 > 당직병원 > 지역 조회에서 검색 권장, 직접 입력 예) 당직병원 서울특별시 종로구)
 사업자 [사업자등록번호] - 사업자등록 상태(휴업/폐업/과세유형) 조회(10자리, 하이픈 없이 숫자만, 예: 사업자 1248100998)
+영화 - 어제 날짜 기준 일별 박스오피스 순위 조회(상위 5위)
+영화 [날짜] - 해당 날짜 박스오피스 순위 조회(YYYYMMDD, 예: 영화 20261010)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4174,7 +4180,7 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.주소.도메인 = 설정.NTS.domain
   전송메시지.주소.경로 = /status
   전송메시지.주소.파라미터[0].key = serviceKey
-  전송메시지.주소.파라미터[0].val = 설정.NTS.service_key
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
   전송메시지.b_no[0] = 세션.nts_bno
 }
 처리::NTS.NTS응답처리
@@ -4210,3 +4216,206 @@ $$$세션.keco_watch_alert_text$$$}
 {사업자등록번호 $$$세션.nts_bno$$$: 국세청에 등록되지 않은 사업자등록번호입니다.}
 문장::TELEGRAM.NTS파싱실패문장
 {사업자등록번호 10자리(하이픈 없이 숫자만)를 입력해주세요. 예) 사업자 1248100998}
+처리::TELEGRAM.텔레그램영화명령처리
+{
+  만약에(참)
+    함수.단어분리(kobis_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.kobis_cmd_word_list,1)
+    처리.KOBIS명령파싱
+}
+처리::KOBIS.KOBIS명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    처리.KOBIS어제계산준비
+  그외그외(세션.cmd_rest.길이 == 8)
+    함수.저장(kobis_target_dt,세션.cmd_rest)
+    전송.KOBIS박스오피스조회전송
+  그외
+    함수.저장(kobis_reply_text,문장.KOBIS파싱실패문장)
+    전송.KOBIS응답전송
+}
+처리::KOBIS.KOBIS어제계산준비
+{
+  만약에(참)
+    함수.날짜(kobis_today_year,%Y)
+    함수.날짜(kobis_today_month,%m)
+    함수.날짜(kobis_today_day,%d)
+    처리.KOBIS어제계산
+}
+처리::KOBIS.KOBIS어제계산
+{
+  만약에(세션.kobis_today_day == 01)
+    처리.KOBIS월경계처리
+  그외
+    함수.빼기(kobis_yesterday_day_raw,세션.kobis_today_day,1)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,세션.kobis_today_month)
+    처리.KOBIS일자패딩
+}
+처리::KOBIS.KOBIS월경계처리
+{
+  만약에(세션.kobis_today_month == 01)
+    함수.빼기(kobis_yesterday_year,세션.kobis_today_year,1)
+    함수.저장(kobis_yesterday_month,12)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 02)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,01)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 03)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,02)
+    처리.KOBIS윤년판정
+  그외그외(세션.kobis_today_month == 04)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,03)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 05)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,04)
+    함수.저장(kobis_yesterday_day_raw,30)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 06)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,05)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 07)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,06)
+    함수.저장(kobis_yesterday_day_raw,30)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 08)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,07)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 09)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,08)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 10)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,09)
+    함수.저장(kobis_yesterday_day_raw,30)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_today_month == 11)
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,10)
+    함수.저장(kobis_yesterday_day_raw,31)
+    처리.KOBIS일자패딩
+  그외
+    함수.저장(kobis_yesterday_year,세션.kobis_today_year)
+    함수.저장(kobis_yesterday_month,11)
+    함수.저장(kobis_yesterday_day_raw,30)
+    처리.KOBIS일자패딩
+}
+처리::KOBIS.KOBIS윤년판정
+{
+  만약에(참)
+    함수.나머지(kobis_mod4,세션.kobis_today_year,4)
+    함수.나머지(kobis_mod100,세션.kobis_today_year,100)
+    함수.나머지(kobis_mod400,세션.kobis_today_year,400)
+    처리.KOBIS윤년분기
+}
+처리::KOBIS.KOBIS윤년분기
+{
+  만약에(세션.kobis_mod4 == 0) 그리고(세션.kobis_mod100 != 0)
+    함수.저장(kobis_yesterday_day_raw,29)
+    처리.KOBIS일자패딩
+  그외그외(세션.kobis_mod400 == 0)
+    함수.저장(kobis_yesterday_day_raw,29)
+    처리.KOBIS일자패딩
+  그외
+    함수.저장(kobis_yesterday_day_raw,28)
+    처리.KOBIS일자패딩
+}
+처리::KOBIS.KOBIS일자패딩
+{
+  만약에(세션.kobis_yesterday_day_raw.길이 == 1)
+    함수.저장(kobis_yesterday_day,0)
+    함수.붙이기(kobis_yesterday_day,세션.kobis_yesterday_day_raw)
+    처리.KOBIS어제날짜조합
+  그외
+    함수.저장(kobis_yesterday_day,세션.kobis_yesterday_day_raw)
+    처리.KOBIS어제날짜조합
+}
+처리::KOBIS.KOBIS어제날짜조합
+{
+  만약에(참)
+    함수.저장(kobis_target_dt,세션.kobis_yesterday_year)
+    함수.붙이기(kobis_target_dt,세션.kobis_yesterday_month,세션.kobis_yesterday_day)
+    전송.KOBIS박스오피스조회전송
+}
+전송::KOBIS.KOBIS박스오피스조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.KOBIS.domain
+  전송메시지.주소.경로 = /searchDailyBoxOfficeList.json
+  전송메시지.주소.파라미터[0].key = key
+  전송메시지.주소.파라미터[0].val = 설정.KOBIS.service_key
+  전송메시지.주소.파라미터[1].key = targetDt
+  전송메시지.주소.파라미터[1].val = 세션.kobis_target_dt
+  전송메시지.주소.파라미터[2].key = itemPerPage
+  전송메시지.주소.파라미터[2].val = 5
+}
+처리::KOBIS.KOBIS응답처리
+{
+  만약에(참)
+    함수.객체저장(kobis_items,수신메시지.boxOfficeResult.dailyBoxOfficeList)
+    함수.저장(kobis_idx,0)
+    함수.저장(kobis_count,0)
+    함수.저장(kobis_summary_lines,없음)
+    처리.KOBIS항목순회
+}
+처리::KOBIS.KOBIS항목순회
+{
+  만약에(세션.객체.kobis_items[세션.kobis_idx].movieNm == NULL)
+    처리.KOBIS결과반영
+  그외
+    함수.저장(kobis_cur_rank,세션.객체.kobis_items[세션.kobis_idx].rank)
+    함수.저장(kobis_cur_name,세션.객체.kobis_items[세션.kobis_idx].movieNm)
+    함수.저장(kobis_cur_audi,세션.객체.kobis_items[세션.kobis_idx].audiCnt)
+    함수.저장(kobis_cur_sales,세션.객체.kobis_items[세션.kobis_idx].salesAmt)
+    처리.KOBIS항목추가
+}
+처리::KOBIS.KOBIS항목추가
+{
+  만약에(세션.kobis_count == 0)
+    함수.저장(kobis_summary_lines,문장.KOBIS라인문장)
+    함수.더하기(kobis_count,세션.kobis_count,1)
+    함수.더하기(kobis_idx,세션.kobis_idx,1)
+    처리.KOBIS항목순회
+  그외
+    함수.붙이기(kobis_summary_lines,문장.KOBIS라인문장)
+    함수.더하기(kobis_count,세션.kobis_count,1)
+    함수.더하기(kobis_idx,세션.kobis_idx,1)
+    처리.KOBIS항목순회
+}
+처리::KOBIS.KOBIS결과반영
+{
+  만약에(세션.kobis_count == 0)
+    함수.저장(kobis_reply_text,문장.KOBIS결과없음문장)
+    전송.KOBIS응답전송
+  그외
+    함수.저장(kobis_reply_text,문장.KOBIS요약문장)
+    전송.KOBIS응답전송
+}
+전송::KOBIS.KOBIS응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.kobis_reply_text
+}
+문장::KOBIS.KOBIS라인문장
+{$$$세션.kobis_cur_rank$$$위 $$$세션.kobis_cur_name$$$ (관객 $$$세션.kobis_cur_audi$$$명, 매출 $$$세션.kobis_cur_sales$$$원)
+}
+문장::KOBIS.KOBIS요약문장
+{$$$세션.kobis_target_dt$$$ 일별 박스오피스: $$$세션.kobis_summary_lines$$$}
+문장::KOBIS.KOBIS결과없음문장
+{$$$세션.kobis_target_dt$$$ 박스오피스 정보가 없습니다.}
+문장::TELEGRAM.KOBIS파싱실패문장
+{날짜 형식을 이해하지 못했습니다. "영화" 또는 "영화 20261010"(YYYYMMDD)처럼 입력해주세요.}

@@ -6,7 +6,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /**
- * addr.ini 섹션에 label=/apply_url=(선택: health_check_path=) 키를
+ * addr.ini 섹션에 label=/apply_url=(선택: health_check_path=, key_group=) 키를
  * 선언하면 Settings 화면의 "서비스별 활용신청"/"키 상태 점검" 목록에
  * 자동으로 뜨게 하는 레지스트리 - 2026-10-09 "새 공공데이터 서비스를
  * 깃허브에서 addr.ini만 갱신해도 설정 화면에 자동으로 추가되게 하자"
@@ -16,6 +16,13 @@ import java.util.Locale
  * 단, 지역 검색 피커/GPS 권한처럼 전용 UI가 필요한 기능 자체는 여전히
  * 앱 업데이트가 필요하다 - 이건 "활용신청 바로가기" 디스커버리만
  * 데이터 기반으로 만드는 것이다(설계 논의에서 합의된 범위).
+ *
+ * key_group=은 이 서비스가 어느 공급자(AddrIniStore.Provider)의 인증키를
+ * 쓰는지를 가리킨다(생략 시 K_DATA 기본값) - 2026-10-12 "공급자별 인증키"
+ * 설계로 추가됨. 영화진흥위원회(KOBIS)/한국도로공사(EX)처럼 data.go.kr과
+ * 별개로 자체 인증키를 발급하는 기관의 서비스를 추가할 때 이 필드로
+ * 구분한다. 같은 공급자의 서비스는 설정 화면에서 그 공급자 상세 화면
+ * 안에 함께 묶여 보인다.
  *
  * health_check_path는 domain= 뒤에 그대로 이어붙일 경로+쿼리 문자열이고,
  * 아래 4개 예약 플레이스홀더만 치환한다(기존 6개 서비스 점검 로직을
@@ -29,17 +36,22 @@ import java.util.Locale
  */
 object ServiceCatalogStore {
 
+    const val DEFAULT_PROVIDER = "K_DATA"
+
     data class ServiceEntry(
         val key: String,
         val label: String,
         val applyUrl: String,
-        val healthCheckUrl: String?
+        val healthCheckUrl: String?,
+        val provider: String
     )
 
     private fun file(filesDir: File) = File(filesDir, "addr.ini")
 
-    /** label=/apply_url= 둘 다 있는 섹션만, addr.ini에 등장하는 순서 그대로 돌려준다. */
-    fun readAll(filesDir: File, serviceKey: String?): List<ServiceEntry> {
+    /** label=/apply_url= 둘 다 있는 섹션만, addr.ini에 등장하는 순서 그대로 돌려준다.
+     *  providerKeys: 공급자 섹션 이름 -> 그 공급자의 실제 서비스키(평문, 플레이스홀더면 null) 맵.
+     *  각 서비스의 key_group=(생략 시 K_DATA)으로 어느 공급자 키를 점검에 쓸지 정한다. */
+    fun readAll(filesDir: File, providerKeys: Map<String, String?>): List<ServiceEntry> {
         val f = file(filesDir)
         if (!f.exists()) return emptyList()
         val sections = IniParser.parse(f.readText())
@@ -48,10 +60,12 @@ object ServiceCatalogStore {
             val applyUrl = kv["apply_url"] ?: return@mapNotNull null
             val domain = kv["domain"]
             val healthPath = kv["health_check_path"]
+            val provider = kv["key_group"] ?: DEFAULT_PROVIDER
+            val serviceKey = providerKeys[provider]
             val healthUrl = if (!domain.isNullOrBlank() && !healthPath.isNullOrBlank() && !serviceKey.isNullOrBlank()) {
                 domain + resolvePlaceholders(healthPath, serviceKey)
             } else null
-            ServiceEntry(sectionName, label, applyUrl, healthUrl)
+            ServiceEntry(sectionName, label, applyUrl, healthUrl, provider)
         }
     }
 

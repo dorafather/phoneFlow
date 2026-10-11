@@ -65,7 +65,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER }
+private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -210,6 +210,10 @@ private fun AppRoot(
     // EGEN_PICKER 화면 하나를 "응급실"/"당직병원" 둘이 같이 쓴다 - 드로워에서
     // 어느 쪽을 눌렀는지만 기억해뒀다가 고른 지역을 그 명령어 뒤에 붙인다.
     var egenPickerPrefix by remember { mutableStateOf("응급실 ") }
+    // PROVIDER_DETAIL 화면 하나를 모든 공급자(K_DATA/KOBIS/EX 등)가 같이 쓴다 -
+    // 설정 화면에서 어느 공급자 카드를 눌렀는지만 기억해둔다(2026-10-12
+    // "공급자별 인증키" 설계 - EGEN_PICKER의 prefix 패턴과 동일한 원리).
+    var selectedProvider by remember { mutableStateOf("K_DATA") }
 
     // "행사 > 내 주변"(GPS 기반 locationBasedList2, 2026-10-09 추가) - 위치
     // 권한이 이미 있으면 바로 마지막 위치를 읽어 "주변행사 위도@경도 " 명령을
@@ -308,6 +312,7 @@ private fun AppRoot(
                         Text(
                             when (screen) {
                                 Screen.SETTINGS -> "설정"
+                                Screen.PROVIDER_DETAIL -> "인증키 설정"
                                 Screen.SCENARIO -> "시나리오 설정"
                                 Screen.LAWD_PICKER -> "지역 검색"
                                 Screen.KMA_PICKER -> "지역 검색"
@@ -337,7 +342,11 @@ private fun AppRoot(
                             input = TextFieldValue("")
                         }
                     )
-                    Screen.SETTINGS -> SettingsScreen(filesDir = filesDir)
+                    Screen.SETTINGS -> SettingsScreen(filesDir = filesDir) { section ->
+                        selectedProvider = section
+                        screen = Screen.PROVIDER_DETAIL
+                    }
+                    Screen.PROVIDER_DETAIL -> ProviderSettingsScreen(filesDir = filesDir, section = selectedProvider)
                     Screen.SCENARIO -> ScenarioViewerScreen(filesDir = filesDir)
                     Screen.LAWD_PICKER -> LawdPickerScreen(filesDir = filesDir) { nameCodeToken ->
                         // 지역추가 ONE 경로만 연결한다(2026-10-08 요청 범위) - "실거래가

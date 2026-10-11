@@ -2,6 +2,7 @@ package com.dorafather.phoneflow
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,32 +35,19 @@ import com.dorafather.phoneflow.net.WatchlistStore
 
 private enum class CheckStatus { UNKNOWN, CHECKING, OK, FAIL }
 
+/**
+ * 설정 최상위 화면 - "등록 현황"(관심종목/관심지역, 공급자와 무관한 공통
+ * 상태)과 "공급자 목록"(인증키를 발급하는 기관 단위 - 공공데이터포털/
+ * 영화진흥위원회/한국도로공사 등)만 보여준다. 공급자를 탭하면
+ * [ProviderSettingsScreen]으로 들어가 그 공급자의 인증키 입력/서비스별
+ * 활용신청/키 상태 점검을 다룬다(2026-10-12 "인증키 입력도 서비스별
+ * 활용신청도 전부 공공데이터포털의 하위다, 그 위에 상위 트리가 있어야
+ * 한다"는 지적으로 분리됨 - 예전엔 이 화면 하나에 전부 들어있었다).
+ */
 @Composable
-fun SettingsScreen(filesDir: java.io.File) {
-    val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
-
-    var maskedKey by remember { mutableStateOf(AddrIniStore.readMasked(filesDir)) }
-    var newKeyInput by remember { mutableStateOf("") }
-    var saveMessage by remember { mutableStateOf<String?>(null) }
-    // 채팅 화면에서 "관심종목/지역 추가·삭제"로 바뀐 내용을 설정 화면에
-    // 들어올 때마다 새로 반영하기 위해 remember 하나로 들고, 새로고침
-    // 버튼으로도 다시 읽을 수 있게 한다 - API 호출 없이 addr.ini만 읽으므로
-    // 매번 다시 읽어도 비용이 거의 없다.
+fun SettingsScreen(filesDir: java.io.File, onProviderPicked: (String) -> Unit) {
     var watchlist by remember { mutableStateOf(WatchlistStore.readAll(filesDir)) }
-    // readMasked()가 null이 아니면 "<여기에 입력하세요>" 플레이스홀더가 아닌
-    // 실제 키가 저장돼 있다는 뜻 - 그때만 readRaw()를 점검 URL 조립에 넘긴다
-    // (플레이스홀더 문자열 그대로 URL에 끼워 넣는 것을 막기 위함).
-    var services by remember {
-        mutableStateOf(
-            ServiceCatalogStore.readAll(
-                filesDir,
-                if (AddrIniStore.readMasked(filesDir) != null) AddrIniStore.readRaw(filesDir) else null
-            )
-        )
-    }
-
-    val statuses = remember { mutableStateMapOf<String, CheckStatus>() }
+    val providers = remember { AddrIniStore.readProviders(filesDir) }
 
     LazyColumn(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         item {
@@ -84,30 +72,79 @@ fun SettingsScreen(filesDir: java.io.File) {
             Spacer(Modifier.height(8.dp))
             Divider()
             Spacer(Modifier.height(16.dp))
-        }
-        item {
-            Text("공공데이터포털 인증키", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            // 최초 설치자는 서비스키 자체가 없는 경우가 대부분이라, 키 입력란
-            // 바로 위에 포털 로그인/회원가입 딥링크를 둔다(2026-10-09 "편의성"
-            // 요청) - 아래 "서비스별 활용신청 바로가기"로 가도 결국 로그인부터
-            // 해야 하니, 그 전 단계를 여기서 바로 열어준다. 둘 다 브라우저에서
-            // 직접 열어 확인한 실제 주소(추측 아님) - 로그인은 www 도메인의
-            // 공개 진입점, 회원가입은 거기서 이어지는 auth 서브도메인 주소.
+            Text("공급자", style = MaterialTheme.typography.titleMedium)
             Text(
-                "아직 공공데이터포털 계정이 없으신가요?",
-                style = MaterialTheme.typography.bodySmall
+                "인증키를 발급하는 기관 단위입니다. 탭하면 그 기관의 인증키 입력/서비스별 활용신청을 볼 수 있어요.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
             )
-            Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.data.go.kr/uim/login/loginView.do")))
-                }) { Text("포털 로그인") }
-                OutlinedButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://auth.data.go.kr/sso/common-signup")))
-                }) { Text("회원가입") }
+        }
+
+        items(providers) { provider ->
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .clickable { onProviderPicked(provider.section) }
+                    .padding(vertical = 10.dp)
+            ) {
+                Text(provider.label, style = MaterialTheme.typography.bodyLarge)
+                val masked = AddrIniStore.readMasked(filesDir, provider.section)
+                Text(
+                    masked?.let { "저장된 키: $it" } ?: "저장된 키 없음",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            Spacer(Modifier.height(12.dp))
+            Divider()
+        }
+    }
+}
+
+/** 공급자 하나의 상세 화면 - 인증키 입력 + 서비스별 활용신청 바로가기 + 키 상태 점검.
+ *  예전 SettingsScreen 전체 내용을 공급자 단위로 스코프만 좁혀 그대로 재사용한 것. */
+@Composable
+fun ProviderSettingsScreen(filesDir: java.io.File, section: String) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+
+    val provider = remember { AddrIniStore.readProviders(filesDir).firstOrNull { it.section == section } }
+    var maskedKey by remember { mutableStateOf(AddrIniStore.readMasked(filesDir, section)) }
+    var newKeyInput by remember { mutableStateOf("") }
+    var saveMessage by remember { mutableStateOf<String?>(null) }
+
+    fun currentProviderKeys(): Map<String, String?> =
+        AddrIniStore.readProviders(filesDir).associate { it.section to AddrIniStore.readRaw(filesDir, it.section) }
+
+    var services by remember {
+        mutableStateOf(
+            ServiceCatalogStore.readAll(filesDir, currentProviderKeys()).filter { it.provider == section }
+        )
+    }
+
+    val statuses = remember { mutableStateMapOf<String, CheckStatus>() }
+
+    LazyColumn(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        item {
+            Text(provider?.label ?: section, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            if (provider?.loginUrl != null || provider?.signupUrl != null) {
+                Text(
+                    "아직 이 공급자 계정이 없으신가요?",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    provider.loginUrl?.let { url ->
+                        OutlinedButton(onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }) { Text("포털 로그인") }
+                    }
+                    provider.signupUrl?.let { url ->
+                        OutlinedButton(onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }) { Text("회원가입") }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             Text(
                 maskedKey?.let { "현재 저장된 키: $it" } ?: "저장된 키가 없습니다 (아직 조회 결과를 받을 수 없음)",
                 style = MaterialTheme.typography.bodyMedium
@@ -126,13 +163,13 @@ fun SettingsScreen(filesDir: java.io.File) {
                     clipboard.getText()?.text?.let { newKeyInput = it }
                 }) { Text("붙여넣기") }
                 Button(onClick = {
-                    val ok = AddrIniStore.save(filesDir, newKeyInput)
+                    val ok = AddrIniStore.save(filesDir, section, newKeyInput)
                     if (ok) {
-                        maskedKey = AddrIniStore.readMasked(filesDir)
+                        maskedKey = AddrIniStore.readMasked(filesDir, section)
                         newKeyInput = ""
                         saveMessage = "저장했습니다. 엔진이 1초 안에 새 키를 자동으로 읽습니다(앱 재시작 불필요)."
                         statuses.clear()
-                        services = ServiceCatalogStore.readAll(filesDir, maskedKey?.let { AddrIniStore.readRaw(filesDir) })
+                        services = ServiceCatalogStore.readAll(filesDir, currentProviderKeys()).filter { it.provider == section }
                     } else {
                         saveMessage = "저장 실패 - 키를 입력했는지 확인해주세요."
                     }
@@ -176,8 +213,7 @@ fun SettingsScreen(filesDir: java.io.File) {
             Divider()
             Spacer(Modifier.height(16.dp))
             Button(onClick = {
-                val key = AddrIniStore.readRaw(filesDir)
-                if (key.isNullOrBlank() || key == "<여기에 입력하세요>") {
+                if (!AddrIniStore.hasRealKey(filesDir, section)) {
                     saveMessage = "먼저 서비스키를 저장해주세요."
                     return@Button
                 }
