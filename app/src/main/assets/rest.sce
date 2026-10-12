@@ -18,6 +18,7 @@
   EGEN.수신메시지.응답코드 == 200    처리.EGEN응답분기처리
   NTS.수신메시지.응답코드 == 200    처리.NTS응답처리
   KOBIS.수신메시지.응답코드 == 200    처리.KOBIS응답처리
+  EX.수신메시지.응답코드 == 200    처리.EX응답처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -37,6 +38,7 @@
     함수.앞자리비교(cmd_당직병원,세션.chat_input_text,당직병원)
     함수.앞자리비교(cmd_사업자,세션.chat_input_text,사업자)
     함수.앞자리비교(cmd_영화,세션.chat_input_text,영화)
+    함수.앞자리비교(cmd_주유소,세션.chat_input_text,주유소)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -69,6 +71,8 @@
     처리.텔레그램사업자명령처리
   그외그외(세션.cmd_영화 == 1)
     처리.텔레그램영화명령처리
+  그외그외(세션.cmd_주유소 == 1)
+    처리.텔레그램주유소명령처리
   그외
     전송.명령모름응답
 }
@@ -120,6 +124,7 @@
 사업자 [사업자등록번호] - 사업자등록 상태(휴업/폐업/과세유형) 조회(10자리, 하이픈 없이 숫자만, 예: 사업자 1248100998)
 영화 - 어제 날짜 기준 일별 박스오피스 순위 조회(상위 5위)
 영화 [날짜] - 해당 날짜 박스오피스 순위 조회(YYYYMMDD, 예: 영화 20261010)
+주유소 [휴게소명] - 고속도로 휴게소 주유소 유가 조회(예: 주유소 안성)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4419,3 +4424,91 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.kobis_target_dt$$$ 박스오피스 정보가 없습니다.}
 문장::TELEGRAM.KOBIS파싱실패문장
 {날짜 형식을 이해하지 못했습니다. "영화" 또는 "영화 20261010"(YYYYMMDD)처럼 입력해주세요.}
+처리::TELEGRAM.텔레그램주유소명령처리
+{
+  만약에(참)
+    함수.단어분리(ex_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.ex_cmd_word_list,1)
+    처리.EX명령파싱
+}
+처리::EX.EX명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(ex_reply_text,문장.EX파싱실패문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_area_name,세션.cmd_rest)
+    전송.EX주유소가격조회전송
+}
+전송::EX.EX주유소가격조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.EX.domain
+  전송메시지.주소.경로 = /curStateStation
+  전송메시지.주소.파라미터[0].key = key
+  전송메시지.주소.파라미터[0].val = 설정.EX.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+  전송메시지.주소.파라미터[2].key = serviceAreaName
+  전송메시지.주소.파라미터[2].val = 세션.ex_area_name
+  전송메시지.주소.파라미터[3].key = numOfRows
+  전송메시지.주소.파라미터[3].val = 5
+}
+처리::EX.EX응답처리
+{
+  만약에(참)
+    함수.객체저장(ex_items,수신메시지.list)
+    함수.저장(ex_idx,0)
+    함수.저장(ex_count,0)
+    함수.저장(ex_summary_lines,없음)
+    처리.EX항목순회
+}
+처리::EX.EX항목순회
+{
+  만약에(세션.객체.ex_items[세션.ex_idx].serviceAreaName == NULL)
+    처리.EX결과반영
+  그외
+    함수.저장(ex_cur_name,세션.객체.ex_items[세션.ex_idx].serviceAreaName)
+    함수.저장(ex_cur_route,세션.객체.ex_items[세션.ex_idx].routeName)
+    함수.저장(ex_cur_dir,세션.객체.ex_items[세션.ex_idx].direction)
+    함수.저장(ex_cur_oil,세션.객체.ex_items[세션.ex_idx].oilCompany)
+    함수.저장(ex_cur_gas,세션.객체.ex_items[세션.ex_idx].gasolinePrice)
+    함수.저장(ex_cur_disel,세션.객체.ex_items[세션.ex_idx].diselPrice)
+    처리.EX항목추가
+}
+처리::EX.EX항목추가
+{
+  만약에(세션.ex_count == 0)
+    함수.저장(ex_summary_lines,문장.EX라인문장)
+    함수.더하기(ex_count,세션.ex_count,1)
+    함수.더하기(ex_idx,세션.ex_idx,1)
+    처리.EX항목순회
+  그외
+    함수.붙이기(ex_summary_lines,문장.EX라인문장)
+    함수.더하기(ex_count,세션.ex_count,1)
+    함수.더하기(ex_idx,세션.ex_idx,1)
+    처리.EX항목순회
+}
+처리::EX.EX결과반영
+{
+  만약에(세션.ex_count == 0)
+    함수.저장(ex_reply_text,문장.EX결과없음문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_reply_text,문장.EX요약문장)
+    전송.EX응답전송
+}
+전송::EX.EX응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.ex_reply_text
+}
+문장::EX.EX라인문장
+{$$$세션.ex_cur_name$$$($$$세션.ex_cur_route$$$ $$$세션.ex_cur_dir$$$, $$$세션.ex_cur_oil$$$) 휘발유 $$$세션.ex_cur_gas$$$ / 경유 $$$세션.ex_cur_disel$$$
+}
+문장::EX.EX요약문장
+{$$$세션.ex_area_name$$$ 주유소 가격: $$$세션.ex_summary_lines$$$}
+문장::EX.EX결과없음문장
+{$$$세션.ex_area_name$$$ 관련 주유소 정보가 없습니다.}
+문장::TELEGRAM.EX파싱실패문장
+{휴게소명을 입력해주세요. 예) 주유소 안성}

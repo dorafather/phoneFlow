@@ -89,6 +89,13 @@
       "items": [
         {"label": "박스오피스", "insert": "영화"}
       ]
+    },
+    {
+      "label": "주유소",
+      "requires_section": "EX",
+      "items": [
+        {"label": "가격조회", "insert": "주유소 "}
+      ]
     }
   ]
 }
