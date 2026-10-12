@@ -125,6 +125,7 @@
 영화 - 어제 날짜 기준 일별 박스오피스 순위 조회(상위 5위)
 영화 [날짜] - 해당 날짜 박스오피스 순위 조회(YYYYMMDD, 예: 영화 20261010)
 주유소 [휴게소명] - 고속도로 휴게소 주유소 유가 조회(예: 주유소 안성)
+주유소 내주변 - 내 위치에서 가장 가까운 휴게소 5곳 주유소 가격 조회(드로워 > 주유소 > 내 주변에서 위치 권한 허용 필요)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4429,6 +4430,13 @@ $$$세션.keco_watch_alert_text$$$}
   만약에(참)
     함수.단어분리(ex_cmd_word_list,세션.chat_input_text)
     함수.단어합치기(cmd_rest,세션.리스트.ex_cmd_word_list,1)
+    처리.EX명령분기
+}
+처리::EX.EX명령분기
+{
+  만약에(세션.cmd_rest === 내주변)
+    처리.EX근처명령처리
+  그외
     처리.EX명령파싱
 }
 처리::EX.EX명령파싱
@@ -4437,6 +4445,7 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(ex_reply_text,문장.EX파싱실패문장)
     전송.EX응답전송
   그외
+    함수.저장(ex_mode,단건)
     함수.저장(ex_area_name,세션.cmd_rest)
     전송.EX주유소가격조회전송
 }
@@ -4455,6 +4464,13 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.주소.파라미터[3].val = 5
 }
 처리::EX.EX응답처리
+{
+  만약에(세션.ex_mode == 근처)
+    처리.EX근처응답처리
+  그외
+    처리.EX단건응답처리
+}
+처리::EX.EX단건응답처리
 {
   만약에(참)
     함수.객체저장(ex_items,수신메시지.list)
@@ -4512,3 +4528,66 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.ex_area_name$$$ 관련 주유소 정보가 없습니다.}
 문장::TELEGRAM.EX파싱실패문장
 {휴게소명을 입력해주세요. 예) 주유소 안성}
+처리::EX.EX근처명령처리
+{
+  만약에(참)
+    함수.단어분리(ex_near_word_list,세션.cmd_rest)
+    함수.단어합치기(ex_near_rest,세션.리스트.ex_near_word_list,1)
+    함수.쪼개기(ex_near_list,세션.ex_near_rest,|)
+    함수.저장(ex_mode,근처)
+    함수.저장(ex_near_idx,0)
+    함수.저장(ex_near_count,0)
+    함수.저장(ex_summary_lines,없음)
+    처리.EX근처순회
+}
+처리::EX.EX근처순회
+{
+  만약에(세션.리스트.ex_near_list[세션.ex_near_idx] == NULL)
+    처리.EX근처완료
+  그외
+    함수.저장(ex_area_name,세션.리스트.ex_near_list[세션.ex_near_idx])
+    전송.EX주유소가격조회전송
+}
+처리::EX.EX근처응답처리
+{
+  만약에(수신메시지.list[0].serviceAreaName == NULL)
+    처리.EX근처다음
+  그외
+    함수.저장(ex_near_cur_name,수신메시지.list[0].serviceAreaName)
+    함수.저장(ex_near_cur_gas,수신메시지.list[0].gasolinePrice)
+    함수.저장(ex_near_cur_disel,수신메시지.list[0].diselPrice)
+    처리.EX근처항목추가
+}
+처리::EX.EX근처항목추가
+{
+  만약에(세션.ex_near_count == 0)
+    함수.저장(ex_summary_lines,문장.EX근처라인문장)
+    함수.더하기(ex_near_count,세션.ex_near_count,1)
+    처리.EX근처다음
+  그외
+    함수.붙이기(ex_summary_lines,문장.EX근처라인문장)
+    함수.더하기(ex_near_count,세션.ex_near_count,1)
+    처리.EX근처다음
+}
+처리::EX.EX근처다음
+{
+  만약에(참)
+    함수.더하기(ex_near_idx,세션.ex_near_idx,1)
+    처리.EX근처순회
+}
+처리::EX.EX근처완료
+{
+  만약에(세션.ex_near_count == 0)
+    함수.저장(ex_reply_text,문장.EX근처결과없음문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_reply_text,문장.EX근처요약문장)
+    전송.EX응답전송
+}
+문장::EX.EX근처라인문장
+{$$$세션.ex_near_cur_name$$$ 휘발유 $$$세션.ex_near_cur_gas$$$ / 경유 $$$세션.ex_near_cur_disel$$$
+}
+문장::EX.EX근처요약문장
+{내 주변 휴게소 주유소 가격: $$$세션.ex_summary_lines$$$}
+문장::EX.EX근처결과없음문장
+{내 주변 휴게소에 주유소 가격 정보가 없습니다.}

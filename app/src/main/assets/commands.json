@@ -94,7 +94,8 @@
       "label": "주유소",
       "requires_section": "EX",
       "items": [
-        {"label": "가격조회", "insert": "주유소 "}
+        {"label": "가격조회", "insert": "주유소 "},
+        {"label": "내 주변", "insert": "주유소 "}
       ]
     }
   ]

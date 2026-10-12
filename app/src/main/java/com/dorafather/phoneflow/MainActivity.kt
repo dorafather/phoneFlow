@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.dorafather.phoneflow.net.ExRestAreaStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.dorafather.phoneflow.net.WatchlistStore
 import com.notebookflow.engine.FlowBridge
@@ -161,7 +162,7 @@ class MainActivity : ComponentActivity() {
         // 복사" 규칙을 따른다 - addr.ini/rest.sce와 달리 이 파일은 앱이 직접 쓰지는
         // 않지만, 업데이트 시 새 데이터로 갱신하려면 앱 데이터 초기화가 필요하다는
         // 점은 동일한 제약(2026-10 rest.sce 교체 때와 같은 이유).
-        for (name in listOf("addr.ini", "rest.sce", "commands.json", "lawd_codes.db", "kma_grid.db", "hira_region_codes.db")) {
+        for (name in listOf("addr.ini", "rest.sce", "commands.json", "lawd_codes.db", "kma_grid.db", "hira_region_codes.db", "ex_rest_areas.db")) {
             val dest = File(filesDir, name)
             if (dest.exists()) continue
             assets.open(name).use { input ->
@@ -252,6 +253,46 @@ private fun AppRoot(
         }
     }
 
+    // "주유소 > 내 주변"(2026-10-12 추가) - 행사의 GPS 플로우와 완전히 같은
+    // 패턴이지만, 외부 API에 좌표를 바로 넘기는 게 아니라 로컬 DB
+    // (ex_rest_areas.db, ExRestAreaStore)에서 가장 가까운 5곳을 먼저
+    // 골라 그 이름들을 "|"로 이어붙여 "주유소 내주변 이름1|이름2|..."
+    // 명령으로 채운다 - rest.sce가 이 5개를 순회하며 각각 가격을 조회한다.
+    fun fillNearbyGasCommand() {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val best = lm.getProviders(true)
+            .mapNotNull { provider ->
+                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            }
+            .minByOrNull { it.accuracy }
+        if (best == null) {
+            val insert = "주유소 "
+            input = TextFieldValue(insert, selection = TextRange(insert.length))
+            return
+        }
+        val nearest = ExRestAreaStore.nearest(filesDir, best.latitude, best.longitude, limit = 5)
+        val insert = if (nearest.isEmpty()) {
+            "주유소 "
+        } else {
+            "주유소 내주변 " + nearest.joinToString("|") { it.name }
+        }
+        input = TextFieldValue(insert, selection = TextRange(insert.length))
+    }
+    val locationPermissionLauncherGas = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyGasCommand() }
+    fun requestNearbyGas() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyGasCommand()
+        } else {
+            locationPermissionLauncherGas.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -299,6 +340,11 @@ private fun AppRoot(
                     onEgenPickerRequested = { prefix ->
                         egenPickerPrefix = prefix
                         screen = Screen.EGEN_PICKER
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyGasRequested = {
+                        requestNearbyGas()
+                        screen = Screen.CHAT
                         scope.launch { drawerState.close() }
                     }
                 )
@@ -463,7 +509,8 @@ private fun CommandDrawerContent(
     onFestivalPickerRequested: () -> Unit,
     onNearbyFestivalRequested: () -> Unit,
     onHiraPickerRequested: () -> Unit,
-    onEgenPickerRequested: (String) -> Unit
+    onEgenPickerRequested: (String) -> Unit,
+    onNearbyGasRequested: () -> Unit
 ) {
     val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
@@ -637,6 +684,19 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onEgenPickerRequested("당직병원 ") }
+                                )
+                            }
+                        } else if (group.label == "주유소" && cmd.label == "내 주변") {
+                            // GPS로 가장 가까운 휴게소 5곳을 로컬 DB(ex_rest_areas.db)에서
+                            // 바로 계산한다(행사 "내 주변"과 달리 외부 API 호출 없음 -
+                            // 2026-10-12 추가, AppRoot의 onNearbyGasRequested 참고).
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onNearbyGasRequested() }
                                 )
                             }
                         } else {
