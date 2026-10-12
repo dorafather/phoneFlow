@@ -293,6 +293,45 @@ private fun AppRoot(
         }
     }
 
+    // "휴게소 > 내 주변"(2026-10-12 추가) - fillNearbyGasCommand와 완전히
+    // 같은 패턴(같은 ex_rest_areas.db, 같은 최근접 5곳 계산)이지만 명령
+    // 접두어만 "메뉴 내주변"으로 다르다 - rest.sce의 EX메뉴근처 체인이
+    // 각 이름당 대표메뉴 1건씩만 모아 보여준다.
+    fun fillNearbyMenuCommand() {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val best = lm.getProviders(true)
+            .mapNotNull { provider ->
+                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            }
+            .minByOrNull { it.accuracy }
+        if (best == null) {
+            val insert = "메뉴 "
+            input = TextFieldValue(insert, selection = TextRange(insert.length))
+            return
+        }
+        val nearest = ExRestAreaStore.nearest(filesDir, best.latitude, best.longitude, limit = 5)
+        val insert = if (nearest.isEmpty()) {
+            "메뉴 "
+        } else {
+            "메뉴 내주변 " + nearest.joinToString("|") { it.name }
+        }
+        input = TextFieldValue(insert, selection = TextRange(insert.length))
+    }
+    val locationPermissionLauncherMenu = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyMenuCommand() }
+    fun requestNearbyMenu() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyMenuCommand()
+        } else {
+            locationPermissionLauncherMenu.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -344,6 +383,11 @@ private fun AppRoot(
                     },
                     onNearbyGasRequested = {
                         requestNearbyGas()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyMenuRequested = {
+                        requestNearbyMenu()
                         screen = Screen.CHAT
                         scope.launch { drawerState.close() }
                     }
@@ -510,7 +554,8 @@ private fun CommandDrawerContent(
     onNearbyFestivalRequested: () -> Unit,
     onHiraPickerRequested: () -> Unit,
     onEgenPickerRequested: (String) -> Unit,
-    onNearbyGasRequested: () -> Unit
+    onNearbyGasRequested: () -> Unit,
+    onNearbyMenuRequested: () -> Unit
 ) {
     val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
@@ -697,6 +742,18 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onNearbyGasRequested() }
+                                )
+                            }
+                        } else if (group.label == "휴게소" && cmd.label == "내 주변") {
+                            // "주유소 내 주변"과 같은 GPS+로컬 DB 계산이지만 "메뉴 내주변"
+                            // 명령을 채운다(onNearbyMenuRequested, 2026-10-12 추가).
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onNearbyMenuRequested() }
                                 )
                             }
                         } else {

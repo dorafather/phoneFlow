@@ -102,7 +102,8 @@
       "label": "휴게소",
       "requires_section": "EX",
       "items": [
-        {"label": "대표메뉴", "insert": "메뉴 "}
+        {"label": "대표메뉴", "insert": "메뉴 "},
+        {"label": "내 주변", "insert": "메뉴 "}
       ]
     }
   ]
