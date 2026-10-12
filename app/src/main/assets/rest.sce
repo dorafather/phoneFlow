@@ -39,6 +39,7 @@
     함수.앞자리비교(cmd_사업자,세션.chat_input_text,사업자)
     함수.앞자리비교(cmd_영화,세션.chat_input_text,영화)
     함수.앞자리비교(cmd_주유소,세션.chat_input_text,주유소)
+    함수.앞자리비교(cmd_메뉴,세션.chat_input_text,메뉴)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -73,6 +74,8 @@
     처리.텔레그램영화명령처리
   그외그외(세션.cmd_주유소 == 1)
     처리.텔레그램주유소명령처리
+  그외그외(세션.cmd_메뉴 == 1)
+    처리.텔레그램메뉴명령처리
   그외
     전송.명령모름응답
 }
@@ -126,6 +129,7 @@
 영화 [날짜] - 해당 날짜 박스오피스 순위 조회(YYYYMMDD, 예: 영화 20261010)
 주유소 [휴게소명] - 고속도로 휴게소 주유소 유가 조회(예: 주유소 안성)
 주유소 내주변 - 내 위치에서 가장 가까운 휴게소 5곳 주유소 가격 조회(드로워 > 주유소 > 내 주변에서 위치 권한 허용 필요)
+메뉴 [휴게소명] - 고속도로 휴게소 대표메뉴 조회(최대 10건, 예: 메뉴 안성)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4453,7 +4457,7 @@ $$$세션.keco_watch_alert_text$$$}
 {
   전송메시지.메소드 = GET
   전송메시지.주소.도메인 = 설정.EX.domain
-  전송메시지.주소.경로 = /curStateStation
+  전송메시지.주소.경로 = /business/curStateStation
   전송메시지.주소.파라미터[0].key = key
   전송메시지.주소.파라미터[0].val = 설정.EX.service_key
   전송메시지.주소.파라미터[1].key = type
@@ -4467,6 +4471,8 @@ $$$세션.keco_watch_alert_text$$$}
 {
   만약에(세션.ex_mode == 근처)
     처리.EX근처응답처리
+  그외그외(세션.ex_mode == 메뉴)
+    처리.EX메뉴응답처리
   그외
     처리.EX단건응답처리
 }
@@ -4591,3 +4597,88 @@ $$$세션.keco_watch_alert_text$$$}
 {내 주변 휴게소 주유소 가격: $$$세션.ex_summary_lines$$$}
 문장::EX.EX근처결과없음문장
 {내 주변 휴게소에 주유소 가격 정보가 없습니다.}
+처리::TELEGRAM.텔레그램메뉴명령처리
+{
+  만약에(참)
+    함수.단어분리(ex_menu_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.ex_menu_word_list,1)
+    처리.EX메뉴명령파싱
+}
+처리::EX.EX메뉴명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(ex_reply_text,문장.EX메뉴파싱실패문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_mode,메뉴)
+    함수.저장(ex_area_name,세션.cmd_rest)
+    전송.EX메뉴조회전송
+}
+전송::EX.EX메뉴조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.EX.domain
+  전송메시지.주소.경로 = /restinfo/restBestfoodList
+  전송메시지.주소.파라미터[0].key = key
+  전송메시지.주소.파라미터[0].val = 설정.EX.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+  전송메시지.주소.파라미터[2].key = stdRestNm
+  전송메시지.주소.파라미터[2].val = 세션.ex_area_name
+  전송메시지.주소.파라미터[3].key = bestfoodyn
+  전송메시지.주소.파라미터[3].val = Y
+  전송메시지.주소.파라미터[4].key = numOfRows
+  전송메시지.주소.파라미터[4].val = 20
+}
+처리::EX.EX메뉴응답처리
+{
+  만약에(참)
+    함수.객체저장(ex_menu_items,수신메시지.list)
+    함수.저장(ex_menu_idx,0)
+    함수.저장(ex_menu_count,0)
+    함수.저장(ex_summary_lines,없음)
+    처리.EX메뉴항목순회
+}
+처리::EX.EX메뉴항목순회
+{
+  만약에(세션.객체.ex_menu_items[세션.ex_menu_idx].foodNm == NULL)
+    처리.EX메뉴결과반영
+  그외그외(세션.ex_menu_count >= 10)
+    처리.EX메뉴결과반영
+  그외
+    함수.저장(ex_menu_cur_rest,세션.객체.ex_menu_items[세션.ex_menu_idx].stdRestNm)
+    함수.저장(ex_menu_cur_food,세션.객체.ex_menu_items[세션.ex_menu_idx].foodNm)
+    함수.저장(ex_menu_cur_cost,세션.객체.ex_menu_items[세션.ex_menu_idx].foodCost)
+    처리.EX메뉴항목추가
+}
+처리::EX.EX메뉴항목추가
+{
+  만약에(세션.ex_menu_count == 0)
+    함수.저장(ex_summary_lines,문장.EX메뉴라인문장)
+    함수.더하기(ex_menu_count,세션.ex_menu_count,1)
+    함수.더하기(ex_menu_idx,세션.ex_menu_idx,1)
+    처리.EX메뉴항목순회
+  그외
+    함수.붙이기(ex_summary_lines,문장.EX메뉴라인문장)
+    함수.더하기(ex_menu_count,세션.ex_menu_count,1)
+    함수.더하기(ex_menu_idx,세션.ex_menu_idx,1)
+    처리.EX메뉴항목순회
+}
+처리::EX.EX메뉴결과반영
+{
+  만약에(세션.ex_menu_count == 0)
+    함수.저장(ex_reply_text,문장.EX메뉴결과없음문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_reply_text,문장.EX메뉴요약문장)
+    전송.EX응답전송
+}
+문장::EX.EX메뉴라인문장
+{$$$세션.ex_menu_cur_rest$$$ - $$$세션.ex_menu_cur_food$$$ ($$$세션.ex_menu_cur_cost$$$원)
+}
+문장::EX.EX메뉴요약문장
+{$$$세션.ex_area_name$$$ 대표메뉴: $$$세션.ex_summary_lines$$$}
+문장::EX.EX메뉴결과없음문장
+{$$$세션.ex_area_name$$$ 관련 휴게소 대표메뉴 정보가 없습니다.}
+문장::TELEGRAM.EX메뉴파싱실패문장
+{휴게소명을 입력해주세요. 예) 메뉴 안성}

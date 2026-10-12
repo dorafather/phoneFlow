@@ -97,6 +97,13 @@
         {"label": "가격조회", "insert": "주유소 "},
         {"label": "내 주변", "insert": "주유소 "}
       ]
+    },
+    {
+      "label": "휴게소",
+      "requires_section": "EX",
+      "items": [
+        {"label": "대표메뉴", "insert": "메뉴 "}
+      ]
     }
   ]
 }
