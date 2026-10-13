@@ -66,7 +66,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
-private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER }
+private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER }
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -211,6 +211,10 @@ private fun AppRoot(
     // EGEN_PICKER 화면 하나를 "응급실"/"당직병원" 둘이 같이 쓴다 - 드로워에서
     // 어느 쪽을 눌렀는지만 기억해뒀다가 고른 지역을 그 명령어 뒤에 붙인다.
     var egenPickerPrefix by remember { mutableStateOf("응급실 ") }
+    // EX_PICKER 화면 하나를 "주유소 가격조회"/"휴게소 대표메뉴"/"휴게소 입점
+    // 브랜드" 셋이 같이 쓴다(2026-10-13, 휴게소명 자동완성 요청) - EGEN_PICKER와
+    // 동일한 prefix 패턴.
+    var exPickerPrefix by remember { mutableStateOf("주유소 ") }
     // PROVIDER_DETAIL 화면 하나를 모든 공급자(K_DATA/KOBIS/EX 등)가 같이 쓴다 -
     // 설정 화면에서 어느 공급자 카드를 눌렀는지만 기억해둔다(2026-10-12
     // "공급자별 인증키" 설계 - EGEN_PICKER의 prefix 패턴과 동일한 원리).
@@ -381,6 +385,11 @@ private fun AppRoot(
                         screen = Screen.EGEN_PICKER
                         scope.launch { drawerState.close() }
                     },
+                    onExPickerRequested = { prefix ->
+                        exPickerPrefix = prefix
+                        screen = Screen.EX_PICKER
+                        scope.launch { drawerState.close() }
+                    },
                     onNearbyGasRequested = {
                         requestNearbyGas()
                         screen = Screen.CHAT
@@ -409,6 +418,7 @@ private fun AppRoot(
                                 Screen.FESTIVAL_PICKER -> "지역 검색"
                                 Screen.HIRA_PICKER -> "지역 검색"
                                 Screen.EGEN_PICKER -> "지역 검색"
+                                Screen.EX_PICKER -> "휴게소 검색"
                                 Screen.CHAT -> "phoneFlow"
                             }
                         )
@@ -478,6 +488,13 @@ private fun AppRoot(
                         // 응급실/당직병원 둘 다 여기로 오고, egenPickerPrefix로 어느
                         // 명령어였는지만 구분한다(둘 다 관심지역 등록 없는 조회 전용).
                         val insert = "$egenPickerPrefix$token"
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        screen = Screen.CHAT
+                    }
+                    Screen.EX_PICKER -> ExRestAreaPickerScreen(filesDir = filesDir) { token ->
+                        // 주유소 가격조회/휴게소 대표메뉴/휴게소 입점 브랜드 셋 다
+                        // 여기로 오고, exPickerPrefix로 어느 명령어였는지만 구분한다.
+                        val insert = "$exPickerPrefix$token"
                         input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
@@ -554,6 +571,7 @@ private fun CommandDrawerContent(
     onNearbyFestivalRequested: () -> Unit,
     onHiraPickerRequested: () -> Unit,
     onEgenPickerRequested: (String) -> Unit,
+    onExPickerRequested: (String) -> Unit,
     onNearbyGasRequested: () -> Unit,
     onNearbyMenuRequested: () -> Unit
 ) {
@@ -754,6 +772,39 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onNearbyMenuRequested() }
+                                )
+                            }
+                        } else if (group.label == "주유소" && cmd.label == "가격조회") {
+                            // 휴게소명 자동완성 검색(ExRestAreaPickerScreen, 2026-10-13
+                            // 추가 - "찾기가 너무 어렵다" 피드백) - EGEN_PICKER와 동일한
+                            // prefix 패턴으로 onExPickerRequested에 접두어만 넘긴다.
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("주유소 ") }
+                                )
+                            }
+                        } else if (group.label == "휴게소" && cmd.label == "대표메뉴") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("메뉴 ") }
+                                )
+                            }
+                        } else if (group.label == "휴게소" && cmd.label == "입점 브랜드") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("브랜드 ") }
                                 )
                             }
                         } else {

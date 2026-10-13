@@ -55,6 +55,37 @@ object ExRestAreaStore {
         return all.sortedBy { haversineKm(lat, lon, it.lat, it.lon) }.take(limit)
     }
 
+    /** "주유소"/"메뉴"/"브랜드" 공통 검색 피커 전용(2026-10-13 추가 - "휴게소명
+     *  찾기가 너무 어렵다, 자동완성 있으면 좋겠다"는 요청) - 핵심 이름만
+     *  DISTINCT로 돌려준다(같은 이름이 "안성(서울)"/"안성(부산)"처럼 좌표만
+     *  다른 복수 행으로 들어있어, 목록에서 "안성"이 두 번 뜨는 걸 막기 위함 -
+     *  어차피 이 핵심 이름 자체가 가격/메뉴/브랜드 API의 부분일치 질의어라
+     *  어느 쪽 원본 행인지는 중요하지 않다). HiraRegionCodeStore.search()와
+     *  동일한 정렬 관례(완전일치 우선, 짧은 이름 우선, 가나다순).
+     */
+    fun search(filesDir: File, query: String, limit: Int = 30): List<String> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val f = dbFile(filesDir)
+        if (!f.exists()) return emptyList()
+        val db = try {
+            SQLiteDatabase.openDatabase(f.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        return db.use {
+            val cursor = it.rawQuery(
+                "SELECT DISTINCT name FROM ex_rest_area WHERE name LIKE ? ORDER BY (name = ?) DESC, length(name), name LIMIT ?",
+                arrayOf("$q%", q, limit.toString())
+            )
+            cursor.use { c ->
+                val out = mutableListOf<String>()
+                while (c.moveToNext()) out.add(c.getString(0))
+                out
+            }
+        }
+    }
+
     private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371.0
         val dLat = Math.toRadians(lat2 - lat1)
