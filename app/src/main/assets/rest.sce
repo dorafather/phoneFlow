@@ -4498,7 +4498,7 @@ $$$세션.keco_watch_alert_text$$$}
 {
   만약에(세션.객체.ex_items[세션.ex_idx].serviceAreaName == NULL)
     처리.EX결과반영
-  그외
+  그외그외(세션.객체.ex_items[세션.ex_idx].serviceAreaName === 세션.ex_area_name)
     함수.저장(ex_cur_name,세션.객체.ex_items[세션.ex_idx].serviceAreaName)
     함수.저장(ex_cur_route,세션.객체.ex_items[세션.ex_idx].routeName)
     함수.저장(ex_cur_dir,세션.객체.ex_items[세션.ex_idx].direction)
@@ -4506,6 +4506,9 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(ex_cur_gas,세션.객체.ex_items[세션.ex_idx].gasolinePrice)
     함수.저장(ex_cur_disel,세션.객체.ex_items[세션.ex_idx].diselPrice)
     처리.EX항목추가
+  그외
+    함수.더하기(ex_idx,세션.ex_idx,1)
+    처리.EX항목순회
 }
 처리::EX.EX항목추가
 {
@@ -4661,11 +4664,14 @@ $$$세션.keco_watch_alert_text$$$}
     처리.EX메뉴결과반영
   그외그외(세션.ex_menu_count >= 10)
     처리.EX메뉴결과반영
-  그외
+  그외그외(세션.객체.ex_menu_items[세션.ex_menu_idx].stdRestNm === 세션.ex_area_name)
     함수.저장(ex_menu_cur_rest,세션.객체.ex_menu_items[세션.ex_menu_idx].stdRestNm)
     함수.저장(ex_menu_cur_food,세션.객체.ex_menu_items[세션.ex_menu_idx].foodNm)
     함수.저장(ex_menu_cur_cost,세션.객체.ex_menu_items[세션.ex_menu_idx].foodCost)
     처리.EX메뉴항목추가
+  그외
+    함수.더하기(ex_menu_idx,세션.ex_menu_idx,1)
+    처리.EX메뉴항목순회
 }
 처리::EX.EX메뉴항목추가
 {
@@ -4804,12 +4810,15 @@ $$$세션.keco_watch_alert_text$$$}
     처리.EX브랜드결과반영
   그외그외(세션.ex_brand_count >= 15)
     처리.EX브랜드결과반영
-  그외
+  그외그외(세션.객체.ex_brand_items[세션.ex_brand_idx].stdRestNm === 세션.ex_area_name)
     함수.저장(ex_brand_cur_rest,세션.객체.ex_brand_items[세션.ex_brand_idx].stdRestNm)
     함수.저장(ex_brand_cur_name,세션.객체.ex_brand_items[세션.ex_brand_idx].brdName)
     함수.저장(ex_brand_cur_stime,세션.객체.ex_brand_items[세션.ex_brand_idx].stime)
     함수.저장(ex_brand_cur_etime,세션.객체.ex_brand_items[세션.ex_brand_idx].etime)
     처리.EX브랜드항목추가
+  그외
+    함수.더하기(ex_brand_idx,세션.ex_brand_idx,1)
+    처리.EX브랜드항목순회
 }
 처리::EX.EX브랜드항목추가
 {

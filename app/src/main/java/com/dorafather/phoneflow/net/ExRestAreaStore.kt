@@ -56,12 +56,15 @@ object ExRestAreaStore {
     }
 
     /** "주유소"/"메뉴"/"브랜드" 공통 검색 피커 전용(2026-10-13 추가 - "휴게소명
-     *  찾기가 너무 어렵다, 자동완성 있으면 좋겠다"는 요청) - 핵심 이름만
-     *  DISTINCT로 돌려준다(같은 이름이 "안성(서울)"/"안성(부산)"처럼 좌표만
-     *  다른 복수 행으로 들어있어, 목록에서 "안성"이 두 번 뜨는 걸 막기 위함 -
-     *  어차피 이 핵심 이름 자체가 가격/메뉴/브랜드 API의 부분일치 질의어라
-     *  어느 쪽 원본 행인지는 중요하지 않다). HiraRegionCodeStore.search()와
-     *  동일한 정렬 관례(완전일치 우선, 짧은 이름 우선, 가나다순).
+     *  찾기가 너무 어렵다, 자동완성 있으면 좋겠다"는 요청, 같은 날 "목록은 넓게
+     *  찾고 선택하면 그 한 곳만 나와야" 피드백으로 재설계) - 목록에서 고르는
+     *  단계는 unit_name(원본 전체 이름, "치악(춘천)휴게소")을 부분일치로 넓게
+     *  찾아 "치악(춘천)"처럼 방향 표시가 살아있는 형태로 보여준다("춘천"으로
+     *  검색해도 핵심 이름이 다른 "치악(춘천)" 같은 곳까지 다 후보로 뜨게 하기
+     *  위함 - 사람이 직접 보고 고를 땐 이렇게 넓게 찾는 게 맞다). 대신 이렇게
+     *  "방향까지 포함한" 이름을 그대로 질의어로 보내면, rest.sce의 === 접두사
+     *  필터가 그 한 곳만 정확히 걸러준다(핵심 이름만 질의하면 "춘천"처럼 여러
+     *  곳의 괄호 속 방향 표시와 겹쳐 엉뚱한 곳까지 섞여 나오는 문제가 있었음).
      */
     fun search(filesDir: File, query: String, limit: Int = 30): List<String> {
         val q = query.trim()
@@ -75,12 +78,12 @@ object ExRestAreaStore {
         }
         return db.use {
             val cursor = it.rawQuery(
-                "SELECT DISTINCT name FROM ex_rest_area WHERE name LIKE ? ORDER BY (name = ?) DESC, length(name), name LIMIT ?",
-                arrayOf("$q%", q, limit.toString())
+                "SELECT DISTINCT unit_name FROM ex_rest_area WHERE unit_name LIKE ? ORDER BY length(unit_name), unit_name LIMIT ?",
+                arrayOf("%$q%", limit.toString())
             )
             cursor.use { c ->
                 val out = mutableListOf<String>()
-                while (c.moveToNext()) out.add(c.getString(0))
+                while (c.moveToNext()) out.add(c.getString(0).removeSuffix("휴게소"))
                 out
             }
         }
