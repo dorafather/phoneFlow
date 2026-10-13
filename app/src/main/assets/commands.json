@@ -103,7 +103,8 @@
       "requires_section": "EX",
       "items": [
         {"label": "대표메뉴", "insert": "메뉴 "},
-        {"label": "내 주변", "insert": "메뉴 "}
+        {"label": "내 주변", "insert": "메뉴 "},
+        {"label": "입점 브랜드", "insert": "브랜드 "}
       ]
     }
   ]
