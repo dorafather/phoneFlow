@@ -1,24 +1,35 @@
-# phoneFlow
-
 <p align="center">
   <img src="assets/PhoneFLOW.jpg" alt="phoneFlow" width="150"/>
 </p>
 
-> 내 손 안의, 위치를 아는, 공공데이터 전용 Telegram.
+<h1 align="center">phoneFlow</h1>
+
+<p align="center">
+  <b>내 손 안의, 위치를 아는, 공공데이터 전용 Telegram.</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dorafather/phoneFlow/releases"><img src="https://img.shields.io/github/v/release/dorafather/phoneFlow?color=1c97ff&label=release" alt="최신 릴리스"/></a>
+  <img src="https://img.shields.io/badge/platform-Android-5b5675" alt="Android"/>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-fa538b" alt="AGPL-3.0"/></a>
+</p>
 
 phoneFlow는 대한민국 공공데이터포털(data.go.kr)과 한국도로공사
 (data.ex.co.kr), 영화진흥위원회(kobis.or.kr) 등 여러 공공·민간
-오픈 API의 정보를 채팅 한 줄로 바로 꺼내 쓸 수 있게 해주는 Android
+오픈 API의 정보를 **채팅 한 줄**로 바로 꺼내 쓸 수 있게 해주는 Android
 앱입니다. 주식 시세부터 날씨, 미세먼지, 실거래가, 공휴일, 인천공항
 운항정보, 지역 행사, 병원/응급실/당직병원, 사업자등록 상태, 영화
 박스오피스, 고속도로 휴게소 정보까지 물어보면 바로 답해주고, 관심
 종목/지역을 등록해두면 조건에 맞을 때 알아서 먼저 말을 걸어줍니다.
 
-내부적으로는 Windows용 자동화 허브인
-[NotebookFlow](https://github.com/dorafather/NotebookFlow)와 동일한
-C++ Flow DSL 엔진(`libUtil`)을 JNI로 그대로 품고 있는 Android
-네이티브 앱입니다 — 같은 시나리오 문법으로 동작하는 자매 프로젝트인
-셈입니다.
+<p align="center">
+  <img src="assets/phoneflow_help.png" width="300" alt="phoneFlow help 명령어 안내 (실기기 캡처)"/>
+  <br/>
+  <sub><code>help</code> 명령어 안내 화면 — 실기기 release 빌드 실측 캡처(일부 기능은 이후 추가됨)</sub>
+</p>
+
+> 🔎 **이 앱을 움직이는 언어가 조금 특이합니다.** 문법이 한글입니다.
+> 궁금하다면 바로 [엔진 소개](#엔진-소개-한글로-쓰는-시나리오)로 가보세요.
 
 ---
 
@@ -64,14 +75,62 @@ C++ Flow DSL 엔진(`libUtil`)을 JNI로 그대로 품고 있는 Android
 - **응급실** — 지역별 응급실 실시간 가용병상 조회
 - **당직병원** — 지역별 응급의료기관 요일별 진료시간 조회
 
-<p align="center">
-  <img src="assets/phoneflow_help.png" width="360" alt="phoneFlow help 명령어 안내 (실기기 캡처)"/>
-  <br/>
-  <sub><code>help</code> 명령어 안내 화면 — 실기기 release 빌드 실측 캡처(일부 기능은 이후 추가됨)</sub>
-</p>
-
 > **참고**: 위치 기반 자동 지역 인식(지오펜싱) 등 설계 문서에 남아있는
 > 일부 후속 기능은 아직 포함되지 않았습니다.
+
+---
+
+## 엔진 소개: 한글로 쓰는 시나리오
+
+phoneFlow는 Windows용 자동화 허브 [NotebookFlow](https://github.com/dorafather/NotebookFlow)와
+**동일한 C++ Flow DSL 엔진(`libUtil`)을 JNI로 그대로 품은** Android 네이티브 앱입니다.
+앱이 하는 모든 일은 엔진이 읽는 시나리오 파일(`app/src/main/assets/rest.sce`)에 적혀 있습니다.
+
+### 처음 보면 "이게 뭐지?" 싶은 코드
+
+<p align="center">
+  <img src="assets/dsl_scenario.jpg" width="820" alt="한글로 쓰인 시나리오 코드: 상태, 처리, 전송 블록"/>
+  <br/>
+  <sub>이 앱의 실제 시나리오 일부 (<code>rest.sce</code>)</sub>
+</p>
+
+`처리::`, `전송::`, `만약에`, `함수.저장`, `세션.`, `설정.` — **문법 키워드가 한글**입니다.
+
+| 블록 | 하는 일 |
+|---|---|
+| `상태::FLOW.초기` (왼쪽 아래) | **분기표.** 어떤 이벤트가 오면 어떤 처리를 부를지 정합니다. 채팅 입력, 시작 신호, 각 서비스의 응답 코드(`== 200`)를 `처리::`에 연결합니다. |
+| `처리::KRX.주식감시라인추가` (오른쪽 위) | **판단 블록.** `만약에`로 조건을 나누고 `함수.저장`, `함수.더하기` 같은 함수로 값을 다룹니다. |
+| `처리::KMA.KMA지역좌표확인` (왼쪽 위) | 짧은 처리 하나. 값을 쪼개고 다른 처리를 이름만으로 부릅니다. |
+| `전송::KRX.KRX종목검색전송` (오른쪽 아래) | **외부 REST 호출의 모양.** 서비스 키는 `설정.K_DATA.service_key`처럼 설정을 **참조**합니다. 시나리오에는 비밀을 쓰지 않습니다. |
+
+엔진이 한 번 도는 방식은 이렇습니다.
+
+```
+이벤트 도착 → 상태::(조건 대조) → 처리::(분기·함수) → 전송:: / 타이머::
+        ↑                                                        │
+        └──────────────── 응답이 돌아오면 다시 상태:: ───────────┘
+```
+
+채팅 입력도, 주기적으로 깨어나는 타이머도, 공공 API의 응답도 전부 같은 **이벤트**로 들어와
+이 순환을 한 번씩 돕니다.
+
+### 엔진의 철학
+
+<p align="center">
+  <img src="assets/dsl_philosophy.png" width="820" alt="모든 시스템도 대화한다: Receive, Think, Command, Listen 네 단계와 세 가지 원칙"/>
+</p>
+
+사람의 대화는 **듣고, 생각하고, 말하고, 다시 듣습니다.** 서버가 하는 일도 같습니다.
+이벤트를 받고, 판단하고, 명령하고, 응답을 기다립니다. 그래서 이 엔진의 언어는
+시스템의 대화를 사람이 읽고 쓸 수 있게 적는 **기보(棋譜)** 에 가깝습니다.
+
+- **지휘자는 악기를 연주하지 않는다** — 복잡한 통신은 Android 호스트 계층(JNI, HTTP)의 몫이고,
+  시나리오는 흐름만 봅니다.
+- **한글 DSL은 대화의 기보** — 코드를 모르는 사람도 흐름을 읽을 수 있어야 오래 살아남습니다.
+- **프레임워크는 바뀌어도 시나리오는 남는다** — 엔진은 Android에서도 같은 시나리오 문법으로 돕니다.
+
+문법 전체 가이드는 NotebookFlow 저장소의
+[`CLAUDE.md`](https://github.com/dorafather/NotebookFlow/blob/main/CLAUDE.md)를 참고하세요.
 
 ---
 
@@ -113,11 +172,15 @@ C++ Flow DSL 엔진(`libUtil`)을 JNI로 그대로 품고 있는 Android
 
 ---
 
-## 시나리오 문법
+## Notebook AX 생태계
 
-`app/src/main/assets/rest.sce`는 NotebookFlow와 동일한 처리::/
-전송::/타이머::/문장:: 블록 문법으로 작성되어 있습니다. 문법 자체에
-대한 전체 가이드는 NotebookFlow 저장소의 `CLAUDE.md`를 참고하세요.
+| 프로젝트 | 역할 |
+|---|---|
+| [NotebookRAG](https://github.com/dorafather/NotebookRAG) | 내 문서를 이해하고 검색하는 **두뇌** |
+| [NotebookFlow](https://github.com/dorafather/NotebookFlow) | 두뇌와 세상의 여러 서비스를 이어주는 **손발** (Windows) |
+| **phoneFlow** (여기) | 같은 엔진을 폰으로 가져온 **손 안의 공공데이터 앱** (Android) |
+
+---
 
 ## 라이선스
 
