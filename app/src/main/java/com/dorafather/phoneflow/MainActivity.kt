@@ -13,20 +13,26 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.Button
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,7 +44,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,13 +58,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.ExRestAreaStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.dorafather.phoneflow.net.WatchlistStore
+import com.dorafather.phoneflow.ui.theme.PhoneFlowBlueLight
+import com.dorafather.phoneflow.ui.theme.PhoneFlowStripeGray
+import com.dorafather.phoneflow.ui.theme.PhoneFlowTheme
 import com.notebookflow.engine.FlowBridge
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -112,7 +126,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            PhoneFlowTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppRoot(
                         messages = messages,
@@ -408,26 +422,43 @@ private fun AppRoot(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(
-                            when (screen) {
-                                Screen.SETTINGS -> "설정"
-                                Screen.PROVIDER_DETAIL -> "인증키 설정"
-                                Screen.SCENARIO -> "시나리오 설정"
-                                Screen.LAWD_PICKER -> "지역 검색"
-                                Screen.KMA_PICKER -> "지역 검색"
-                                Screen.FESTIVAL_PICKER -> "지역 검색"
-                                Screen.HIRA_PICKER -> "지역 검색"
-                                Screen.EGEN_PICKER -> "지역 검색"
-                                Screen.EX_PICKER -> "휴게소 검색"
-                                Screen.CHAT -> "phoneFlow"
+                        if (screen == Screen.CHAT) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.zebra_face),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp).clip(CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("PhoneFlow")
                             }
-                        )
+                        } else {
+                            Text(
+                                when (screen) {
+                                    Screen.SETTINGS -> "설정"
+                                    Screen.PROVIDER_DETAIL -> "인증키 설정"
+                                    Screen.SCENARIO -> "시나리오 설정"
+                                    Screen.LAWD_PICKER -> "지역 검색"
+                                    Screen.KMA_PICKER -> "지역 검색"
+                                    Screen.FESTIVAL_PICKER -> "지역 검색"
+                                    Screen.HIRA_PICKER -> "지역 검색"
+                                    Screen.EGEN_PICKER -> "지역 검색"
+                                    Screen.EX_PICKER -> "휴게소 검색"
+                                    Screen.CHAT -> "PhoneFlow"
+                                }
+                            )
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "메뉴")
+                            Icon(Icons.Filled.Menu, contentDescription = "메뉴", tint = Color.White)
                         }
-                    }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White
+                    )
                 )
             }
         ) { padding ->
@@ -549,6 +580,26 @@ private val ITEM_DELETE_TEMPLATES: Map<String, (String) -> String> = mapOf(
     "주식" to { name -> "주식 관심종목 삭제 $name" }
 )
 
+// 드로워 그룹 라벨별 이모지(2026-10-17 UI 개편 - 새 이미지 에셋 추가 없이
+// 메뉴 한눈에 구분되게). 목록에 없는 새 그룹은 기본 점(•)으로 떨어진다.
+private val GROUP_EMOJI: Map<String, String> = mapOf(
+    "주식" to "📈",
+    "기상청" to "☀️",
+    "미세먼지" to "🌫️",
+    "공휴일" to "📅",
+    "실거래가" to "🏠",
+    "인천공항" to "✈️",
+    "행사" to "🎪",
+    "병원" to "🏥",
+    "응급실" to "🚑",
+    "당직병원" to "🌙",
+    "사업자" to "🧾",
+    "영화" to "🎬",
+    "주유소" to "⛽",
+    "휴게소" to "🛣️"
+)
+private fun groupEmoji(label: String): String = GROUP_EMOJI[label] ?: "•"
+
 @Composable
 private fun CommandDrawerContent(
     filesDir: File,
@@ -579,25 +630,53 @@ private fun CommandDrawerContent(
     val expanded = remember { mutableStateListOf<String>() }
     val expandedQueries = remember { mutableStateListOf<String>() }
 
-    Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
-        Text(
-            "phoneFlow",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-        LazyColumn(modifier = Modifier.weight(1f)) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 메신저 앱들의 사이드 메뉴 상단 프로필 헤더를 참고한 브랜드 헤더
+        // (2026-10-17 "얼룩말+파란색을 최대한 활용해서 귀엽게" 요청).
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primary)
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.zebra_face),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text("PhoneFlow", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Text(
+                    "내 손 안의 공공데이터",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+            }
+        }
+        LazyColumn(modifier = Modifier.weight(1f).padding(top = 8.dp)) {
             groups.forEach { group ->
                 item(key = "group-${group.label}") {
                     val isOpen = expanded.contains(group.label)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 12.dp, vertical = 2.dp)
+                            .background(
+                                if (isOpen) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                RoundedCornerShape(14.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            (if (isOpen) "▾ " else "▸ ") + group.label,
+                            "${groupEmoji(group.label)}  ${group.label}",
                             style = MaterialTheme.typography.titleMedium,
+                            color = if (isOpen) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickableCompat {
@@ -889,6 +968,7 @@ private fun ChatScreen(
     }
 
     Scaffold(
+        containerColor = Color.White,
         bottomBar = {
             Row(
                 modifier = Modifier
@@ -902,15 +982,33 @@ private fun ChatScreen(
                     modifier = Modifier
                         .weight(1f)
                         .padding(end = 8.dp),
-                    placeholder = { Text("메시지를 입력하세요 (예: 핑)") }
+                    placeholder = { Text("메시지를 입력하세요 (예: 핑)") },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = PhoneFlowStripeGray,
+                        unfocusedContainerColor = PhoneFlowStripeGray,
+                        disabledContainerColor = PhoneFlowStripeGray,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent
+                    )
                 )
-                Button(onClick = {
-                    val text = input.text.trim()
-                    if (text.isNotEmpty()) {
-                        onSend(text)
+                Surface(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            val text = input.text.trim()
+                            if (text.isNotEmpty()) {
+                                onSend(text)
+                            }
+                        },
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = CircleShape
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("➤", color = Color.White, style = MaterialTheme.typography.titleMedium)
                     }
-                }) {
-                    Text("전송")
                 }
             }
         }
@@ -934,18 +1032,34 @@ private fun ChatScreen(
 private fun ChatBubble(msg: ChatMessage) {
     val alignment = if (msg.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier
-                .align(alignment)
-                .padding(4.dp),
-            color = if (msg.fromUser) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.secondaryContainer,
-            shape = MaterialTheme.shapes.medium
+        Row(
+            modifier = Modifier.align(alignment),
+            verticalAlignment = Alignment.Bottom
         ) {
-            Text(
-                text = msg.text,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
+            if (!msg.fromUser) {
+                Image(
+                    painter = painterResource(id = R.drawable.zebra_face),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(bottom = 4.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(PhoneFlowBlueLight)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Surface(
+                modifier = Modifier.padding(4.dp),
+                color = if (msg.fromUser) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.secondaryContainer,
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(
+                    text = msg.text,
+                    color = if (msg.fromUser) Color.White else MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
         }
     }
 }
