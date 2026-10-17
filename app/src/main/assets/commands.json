@@ -104,7 +104,10 @@
       "items": [
         {"label": "대표메뉴", "insert": "메뉴 "},
         {"label": "내 주변", "insert": "메뉴 "},
-        {"label": "입점 브랜드", "insert": "브랜드 "}
+        {"label": "입점 브랜드", "insert": "브랜드 "},
+        {"label": "편의시설", "insert": "편의시설 "},
+        {"label": "테마휴게소", "insert": "테마 "},
+        {"label": "이벤트", "insert": "이벤트 "}
       ]
     }
   ]

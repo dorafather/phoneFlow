@@ -807,6 +807,36 @@ private fun CommandDrawerContent(
                                         .clickableCompat { onExPickerRequested("브랜드 ") }
                                 )
                             }
+                        } else if (group.label == "휴게소" && cmd.label == "편의시설") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("편의시설 ") }
+                                )
+                            }
+                        } else if (group.label == "휴게소" && cmd.label == "테마휴게소") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("테마 ") }
+                                )
+                            }
+                        } else if (group.label == "휴게소" && cmd.label == "이벤트") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("이벤트 ") }
+                                )
+                            }
                         } else {
                             item(key = "item-${group.label}-${cmd.label}") {
                                 Text(
