@@ -31,47 +31,26 @@ import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.AddrIniStore
 import com.dorafather.phoneflow.net.AndroidHttpClient
 import com.dorafather.phoneflow.net.ServiceCatalogStore
-import com.dorafather.phoneflow.net.WatchlistStore
 
 private enum class CheckStatus { UNKNOWN, CHECKING, OK, FAIL }
 
 /**
- * 설정 최상위 화면 - "등록 현황"(관심종목/관심지역, 공급자와 무관한 공통
- * 상태)과 "공급자 목록"(인증키를 발급하는 기관 단위 - 공공데이터포털/
- * 영화진흥위원회/한국도로공사 등)만 보여준다. 공급자를 탭하면
- * [ProviderSettingsScreen]으로 들어가 그 공급자의 인증키 입력/서비스별
- * 활용신청/키 상태 점검을 다룬다(2026-10-12 "인증키 입력도 서비스별
- * 활용신청도 전부 공공데이터포털의 하위다, 그 위에 상위 트리가 있어야
- * 한다"는 지적으로 분리됨 - 예전엔 이 화면 하나에 전부 들어있었다).
+ * 설정 최상위 화면 - "공급자 목록"(인증키를 발급하는 기관 단위 -
+ * 공공데이터포털/영화진흥위원회/한국도로공사 등)을 보여준다. 공급자를
+ * 탭하면 [ProviderSettingsScreen]으로 들어가 그 공급자의 인증키 입력/
+ * 서비스별 활용신청/키 상태 점검을 다룬다(2026-10-12 "인증키 입력도
+ * 서비스별 활용신청도 전부 공공데이터포털의 하위다, 그 위에 상위 트리가
+ * 있어야 한다"는 지적으로 분리됨 - 예전엔 이 화면 하나에 전부 들어있었다).
+ * "등록 현황"(관심종목/관심지역 목록) 섹션은 2026-10-18 "일부만 나오는데
+ * 지금 UI 컨셉에 안 맞는다"는 피드백으로 제거했다 - 등록 항목 확인은
+ * 각 기능의 "조회" 명령(예: "주식 관심종목 조회")으로 하면 된다.
  */
 @Composable
 fun SettingsScreen(filesDir: java.io.File, onProviderPicked: (String) -> Unit) {
-    var watchlist by remember { mutableStateOf(WatchlistStore.readAll(filesDir)) }
     val providers = remember { AddrIniStore.readProviders(filesDir) }
 
     LazyColumn(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("등록 현황", style = MaterialTheme.typography.titleMedium)
-                OutlinedButton(onClick = { watchlist = WatchlistStore.readAll(filesDir) }) {
-                    Text("새로고침")
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            watchlist.forEach { cat ->
-                Text(cat.label, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    if (cat.items.isEmpty()) "등록된 항목 없음" else cat.items.joinToString(", "),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Divider()
-            Spacer(Modifier.height(16.dp))
             Text("공급자", style = MaterialTheme.typography.titleMedium)
             Text(
                 "인증키를 발급하는 기관 단위입니다. 탭하면 그 기관의 인증키 입력/서비스별 활용신청을 볼 수 있어요.",

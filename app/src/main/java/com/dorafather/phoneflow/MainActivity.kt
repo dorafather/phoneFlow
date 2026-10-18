@@ -65,6 +65,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.dorafather.phoneflow.net.ChatHistoryStore
 import com.dorafather.phoneflow.net.ExRestAreaStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.dorafather.phoneflow.net.WatchlistStore
@@ -97,6 +98,18 @@ class MainActivity : ComponentActivity() {
 
     private val messages = mutableStateListOf<ChatMessage>()
 
+    /** 모든 메시지 추가는 반드시 이 함수를 거친다 - 화면 상태(messages)와
+     *  영구 저장(ChatHistoryStore)을 항상 같이 갱신하기 위함(2026-10-18
+     *  "채팅 기록이 재설치/재시작마다 사라진다" 피드백 - 최근 100개까지는
+     *  filesDir/chat_history.json에 남아있다가 다음 실행 때 복원된다). */
+    private fun appendMessage(msg: ChatMessage) {
+        messages.add(msg)
+        if (messages.size > ChatHistoryStore.MAX_MESSAGES) {
+            messages.removeAt(0)
+        }
+        ChatHistoryStore.save(filesDir, messages.map { ChatHistoryStore.StoredMessage(it.text, it.fromUser) })
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -106,12 +119,16 @@ class MainActivity : ComponentActivity() {
             prevHandler?.uncaughtException(thread, e)
         }
 
+        messages.addAll(
+            ChatHistoryStore.load(filesDir).map { ChatMessage(text = it.text, fromUser = it.fromUser) }
+        )
+
         FlowMessageRouter.setFinalMessageListener { json ->
             // ACTION() 콜백은 엔진 전용 네이티브 스레드(또는 AndroidHttpClient의
             // 워커 스레드)에서 올 수 있으므로, Compose 상태 변경은 반드시
             // runOnUiThread로 메인 스레드에 올린다.
             runOnUiThread {
-                messages.add(ChatMessage(text = extractDisplayText(json), fromUser = false))
+                appendMessage(ChatMessage(text = extractDisplayText(json), fromUser = false))
             }
         }
 
@@ -122,7 +139,7 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "FlowBridge.nativeInit() 호출 성공 (baseDir=${filesDir.absolutePath})")
         } catch (t: Throwable) {
             Log.e(TAG, "FlowBridge native 호출 실패", t)
-            messages.add(ChatMessage(text = "엔진 초기화 실패: ${t.message}", fromUser = false))
+            appendMessage(ChatMessage(text = "엔진 초기화 실패: ${t.message}", fromUser = false))
         }
 
         setContent {
@@ -187,7 +204,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendChatInput(text: String) {
-        messages.add(ChatMessage(text = text, fromUser = true))
+        appendMessage(ChatMessage(text = text, fromUser = true))
         val event = JSONObject().apply {
             put("이벤트명", "채팅입력")
             put("text", text)
@@ -452,6 +469,17 @@ private fun AppRoot(
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Filled.Menu, contentDescription = "메뉴", tint = Color.White)
+                        }
+                    },
+                    actions = {
+                        // "메뉴트리를 꼭 거쳐야만 채팅으로 돌아갈 수 있어 불편하다"는
+                        // 2026-10-18 피드백 - 채팅이 아닌 모든 화면(설정/시나리오
+                        // 설정/피커 전부)에서 한 번에 채팅으로 바로 돌아갈 수 있게
+                        // 흰색 동그란 말풍선 버튼을 둔다(카카오톡/텔레그램처럼 항상
+                        // 대화창으로 복귀하는 길을 열어두는 디자인 참고).
+                        if (screen != Screen.CHAT) {
+                            ChatEntryButton(onClick = { screen = Screen.CHAT })
+                            Spacer(modifier = Modifier.width(12.dp))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -953,6 +981,23 @@ private fun CommandDrawerContent(
 
 private fun Modifier.clickableCompat(onClick: () -> Unit): Modifier =
     this.clickable(onClick = onClick)
+
+/** 흰색 동그란 말풍선 버튼 - 채팅이 아닌 화면 상단에서 채팅으로 한 번에
+ *  돌아가는 바로가기(2026-10-18 요청, 메뉴트리를 거치지 않고도 진입). */
+@Composable
+private fun ChatEntryButton(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        color = Color.White
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text("💬")
+        }
+    }
+}
 
 @Composable
 private fun ChatScreen(
