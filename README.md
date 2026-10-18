@@ -23,9 +23,9 @@ phoneFlow는 대한민국 공공데이터포털(data.go.kr)과 한국도로공�
 종목/지역을 등록해두면 조건에 맞을 때 알아서 먼저 말을 걸어줍니다.
 
 <p align="center">
-  <img src="assets/phoneflow_help.png" width="300" alt="phoneFlow help 명령어 안내 (실기기 캡처)"/>
+  <img src="assets/phoneflow_menu.jpg" width="300" alt="phoneFlow 드로워 메뉴 (실기기 캡처)"/>
   <br/>
-  <sub><code>help</code> 명령어 안내 화면 — 실기기 release 빌드 실측 캡처(일부 기능은 이후 추가됨)</sub>
+  <sub>얼룩말+파란색 브랜드 UI로 개편된 드로워 메뉴 — 실기기 캡처</sub>
 </p>
 
 > 🔎 **이 앱을 움직이는 언어가 조금 특이합니다.** 문법이 한글입니다.
