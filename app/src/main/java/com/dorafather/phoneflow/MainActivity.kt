@@ -608,26 +608,6 @@ private val ITEM_DELETE_TEMPLATES: Map<String, (String) -> String> = mapOf(
     "주식" to { name -> "주식 관심종목 삭제 $name" }
 )
 
-// 드로워 그룹 라벨별 이모지(2026-10-17 UI 개편 - 새 이미지 에셋 추가 없이
-// 메뉴 한눈에 구분되게). 목록에 없는 새 그룹은 기본 점(•)으로 떨어진다.
-private val GROUP_EMOJI: Map<String, String> = mapOf(
-    "주식" to "📈",
-    "기상청" to "☀️",
-    "미세먼지" to "🌫️",
-    "공휴일" to "📅",
-    "실거래가" to "🏠",
-    "인천공항" to "✈️",
-    "행사" to "🎪",
-    "병원" to "🏥",
-    "응급실" to "🚑",
-    "당직병원" to "🌙",
-    "사업자" to "🧾",
-    "영화" to "🎬",
-    "주유소" to "⛽",
-    "휴게소" to "🛣️"
-)
-private fun groupEmoji(label: String): String = GROUP_EMOJI[label] ?: "•"
-
 @Composable
 private fun CommandDrawerContent(
     filesDir: File,
@@ -701,7 +681,7 @@ private fun CommandDrawerContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "${groupEmoji(group.label)}  ${group.label}",
+                            "${group.icon ?: "•"}  ${group.label}",
                             style = MaterialTheme.typography.titleMedium,
                             color = if (isOpen) MaterialTheme.colorScheme.onPrimaryContainer
                                     else MaterialTheme.colorScheme.onSurface,

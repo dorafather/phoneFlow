@@ -26,7 +26,17 @@ import java.io.File
  * 그룹은 연결할 섹션 이름이 commands.json 설계 당시 없었어 비워둠).
  */
 data class CommandItem(val label: String, val insert: String)
-data class CommandGroup(val label: String, val items: List<CommandItem>, val requiresSection: String? = null)
+data class CommandGroup(
+    val label: String,
+    val items: List<CommandItem>,
+    val requiresSection: String? = null,
+    // 드로워에 그릴 이모지 아이콘(2026-10-19 "아이콘도 commands.json에서
+    // 오면 새 연동 추가 시 GitHub 푸시만으로 해결된다" 요청 - 예전엔
+    // MainActivity.kt의 GROUP_EMOJI 맵에 하드코딩돼 있어 "시나리오 설정 >
+    // 업데이트"(GitHub 동기화)로는 절대 안 바뀌었다). 없으면 드로워가
+    // 기본 점(•)으로 표시한다.
+    val icon: String? = null
+)
 
 private fun loadCommandGroups(filesDir: File): List<CommandGroup> {
     val f = File(filesDir, "commands.json")
@@ -42,7 +52,8 @@ private fun loadCommandGroups(filesDir: File): List<CommandGroup> {
                 val it = items.getJSONObject(ii)
                 CommandItem(label = it.getString("label"), insert = it.getString("insert"))
             },
-            requiresSection = g.optString("requires_section", "").ifBlank { null }
+            requiresSection = g.optString("requires_section", "").ifBlank { null },
+            icon = g.optString("icon", "").ifBlank { null }
         )
     }
 }

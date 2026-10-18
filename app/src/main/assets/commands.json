@@ -2,6 +2,7 @@
   "groups": [
     {
       "label": "주식",
+      "icon": "📈",
       "items": [
         {"label": "관심종목 조회", "insert": "주식 관심종목 조회"},
         {"label": "관심종목 추가", "insert": "주식 관심종목 추가 "},
@@ -10,6 +11,7 @@
     },
     {
       "label": "기상청",
+      "icon": "☀️",
       "items": [
         {"label": "날씨", "insert": "기상청 날씨 "},
         {"label": "지역 추가", "insert": "기상청 지역 추가 "},
@@ -18,6 +20,7 @@
     },
     {
       "label": "미세먼지",
+      "icon": "🌫️",
       "items": [
         {"label": "조회", "insert": "미세먼지 "},
         {"label": "지역 추가", "insert": "미세먼지 지역 추가 "},
@@ -26,6 +29,7 @@
     },
     {
       "label": "공휴일",
+      "icon": "📅",
       "items": [
         {"label": "이번 달 조회", "insert": "공휴일"},
         {"label": "월 지정 조회", "insert": "공휴일 "}
@@ -33,6 +37,7 @@
     },
     {
       "label": "실거래가",
+      "icon": "🏠",
       "items": [
         {"label": "조회", "insert": "실거래가 "},
         {"label": "지역 추가", "insert": "실거래가 지역추가 "},
@@ -41,6 +46,7 @@
     },
     {
       "label": "인천공항",
+      "icon": "✈️",
       "items": [
         {"label": "도착", "insert": "인천공항 도착"},
         {"label": "출발", "insert": "인천공항 출발"}
@@ -48,6 +54,7 @@
     },
     {
       "label": "행사",
+      "icon": "🎪",
       "requires_section": "TOUR",
       "items": [
         {"label": "조회", "insert": "행사 "},
@@ -57,6 +64,7 @@
     },
     {
       "label": "병원",
+      "icon": "🏥",
       "requires_section": "HIRA",
       "items": [
         {"label": "지역 선택", "insert": "병원 "}
@@ -64,6 +72,7 @@
     },
     {
       "label": "응급실",
+      "icon": "🚑",
       "requires_section": "EGEN",
       "items": [
         {"label": "가용병상 조회", "insert": "응급실 "}
@@ -71,6 +80,7 @@
     },
     {
       "label": "당직병원",
+      "icon": "🌙",
       "requires_section": "EGEN",
       "items": [
         {"label": "지역 조회", "insert": "당직병원 "}
@@ -78,6 +88,7 @@
     },
     {
       "label": "사업자",
+      "icon": "🧾",
       "requires_section": "NTS",
       "items": [
         {"label": "상태조회", "insert": "사업자 "}
@@ -85,6 +96,7 @@
     },
     {
       "label": "영화",
+      "icon": "🎬",
       "requires_section": "KOBIS",
       "items": [
         {"label": "박스오피스", "insert": "영화"}
@@ -92,6 +104,7 @@
     },
     {
       "label": "주유소",
+      "icon": "⛽",
       "requires_section": "EX",
       "items": [
         {"label": "가격조회", "insert": "주유소 "},
@@ -100,6 +113,7 @@
     },
     {
       "label": "휴게소",
+      "icon": "🛣️",
       "requires_section": "EX",
       "items": [
         {"label": "대표메뉴", "insert": "메뉴 "},
