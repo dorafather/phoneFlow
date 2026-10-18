@@ -904,6 +904,16 @@ private fun CommandDrawerContent(
                                         .clickableCompat { onExPickerRequested("메뉴 ") }
                                 )
                             }
+                        } else if (group.label == "휴게소" && cmd.label == "전체메뉴") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onExPickerRequested("전체메뉴 ") }
+                                )
+                            }
                         } else if (group.label == "휴게소" && cmd.label == "입점 브랜드") {
                             item(key = "item-${group.label}-${cmd.label}") {
                                 Text(

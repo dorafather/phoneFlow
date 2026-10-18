@@ -103,6 +103,7 @@
       "requires_section": "EX",
       "items": [
         {"label": "대표메뉴", "insert": "메뉴 "},
+        {"label": "전체메뉴", "insert": "전체메뉴 "},
         {"label": "내 주변", "insert": "메뉴 "},
         {"label": "입점 브랜드", "insert": "브랜드 "},
         {"label": "편의시설", "insert": "편의시설 "},

@@ -44,6 +44,7 @@
     함수.앞자리비교(cmd_편의시설,세션.chat_input_text,편의시설)
     함수.앞자리비교(cmd_테마,세션.chat_input_text,테마)
     함수.앞자리비교(cmd_이벤트,세션.chat_input_text,이벤트)
+    함수.앞자리비교(cmd_전체메뉴,세션.chat_input_text,전체메뉴)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -88,6 +89,8 @@
     처리.텔레그램테마명령처리
   그외그외(세션.cmd_이벤트 == 1)
     처리.텔레그램이벤트명령처리
+  그외그외(세션.cmd_전체메뉴 == 1)
+    처리.텔레그램전체메뉴명령처리
   그외
     전송.명령모름응답
 }
@@ -147,6 +150,7 @@
 편의시설 [휴게소명] - 고속도로 휴게소 편의시설 현황 조회(최대 15건, 예: 편의시설 안성)
 테마 [휴게소명] - 고속도로 테마휴게소 현황 조회(예: 테마 안성)
 이벤트 [휴게소명] - 고속도로 휴게소 이벤트 현황 조회(최대 10건, 예: 이벤트 안성)
+전체메뉴 [휴게소명] - 고속도로 휴게소 전체 메뉴 조회(대표메뉴 포함 전체, 최대 20건, 예: 전체메뉴 안성)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4500,6 +4504,8 @@ $$$세션.keco_watch_alert_text$$$}
     처리.EX테마응답처리
   그외그외(세션.ex_mode == 이벤트)
     처리.EX이벤트응답처리
+  그외그외(세션.ex_mode == 전체메뉴)
+    처리.EX전체메뉴응답처리
   그외
     처리.EX단건응답처리
 }
@@ -5128,3 +5134,88 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.ex_area_name$$$ 관련 휴게소 이벤트 정보가 없습니다.}
 문장::TELEGRAM.EX이벤트파싱실패문장
 {휴게소명을 입력해주세요. 예) 이벤트 안성}
+처리::TELEGRAM.텔레그램전체메뉴명령처리
+{
+  만약에(참)
+    함수.단어분리(ex_fullmenu_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.ex_fullmenu_word_list,1)
+    처리.EX전체메뉴명령파싱
+}
+처리::EX.EX전체메뉴명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(ex_reply_text,문장.EX전체메뉴파싱실패문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_mode,전체메뉴)
+    함수.저장(ex_area_name,세션.cmd_rest)
+    전송.EX전체메뉴조회전송
+}
+전송::EX.EX전체메뉴조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.EX.domain
+  전송메시지.주소.경로 = /restinfo/restBestfoodList
+  전송메시지.주소.파라미터[0].key = key
+  전송메시지.주소.파라미터[0].val = 설정.EX.service_key
+  전송메시지.주소.파라미터[1].key = type
+  전송메시지.주소.파라미터[1].val = json
+  전송메시지.주소.파라미터[2].key = stdRestNm
+  전송메시지.주소.파라미터[2].val = 세션.ex_area_name
+  전송메시지.주소.파라미터[3].key = numOfRows
+  전송메시지.주소.파라미터[3].val = 50
+}
+처리::EX.EX전체메뉴응답처리
+{
+  만약에(참)
+    함수.객체저장(ex_fullmenu_items,수신메시지.list)
+    함수.저장(ex_fullmenu_idx,0)
+    함수.저장(ex_fullmenu_count,0)
+    함수.저장(ex_summary_lines,없음)
+    처리.EX전체메뉴항목순회
+}
+처리::EX.EX전체메뉴항목순회
+{
+  만약에(세션.객체.ex_fullmenu_items[세션.ex_fullmenu_idx].foodNm == NULL)
+    처리.EX전체메뉴결과반영
+  그외그외(세션.ex_fullmenu_count >= 20)
+    처리.EX전체메뉴결과반영
+  그외그외(세션.객체.ex_fullmenu_items[세션.ex_fullmenu_idx].stdRestNm === 세션.ex_area_name)
+    함수.저장(ex_fullmenu_cur_food,세션.객체.ex_fullmenu_items[세션.ex_fullmenu_idx].foodNm)
+    함수.저장(ex_fullmenu_cur_cost,세션.객체.ex_fullmenu_items[세션.ex_fullmenu_idx].foodCost)
+    처리.EX전체메뉴항목추가
+  그외
+    함수.더하기(ex_fullmenu_idx,세션.ex_fullmenu_idx,1)
+    처리.EX전체메뉴항목순회
+}
+처리::EX.EX전체메뉴항목추가
+{
+  만약에(세션.ex_fullmenu_count == 0)
+    함수.저장(ex_summary_lines,문장.EX전체메뉴라인문장)
+    함수.더하기(ex_fullmenu_count,세션.ex_fullmenu_count,1)
+    함수.더하기(ex_fullmenu_idx,세션.ex_fullmenu_idx,1)
+    처리.EX전체메뉴항목순회
+  그외
+    함수.붙이기(ex_summary_lines,문장.EX전체메뉴라인문장)
+    함수.더하기(ex_fullmenu_count,세션.ex_fullmenu_count,1)
+    함수.더하기(ex_fullmenu_idx,세션.ex_fullmenu_idx,1)
+    처리.EX전체메뉴항목순회
+}
+처리::EX.EX전체메뉴결과반영
+{
+  만약에(세션.ex_fullmenu_count == 0)
+    함수.저장(ex_reply_text,문장.EX전체메뉴결과없음문장)
+    전송.EX응답전송
+  그외
+    함수.저장(ex_reply_text,문장.EX전체메뉴요약문장)
+    전송.EX응답전송
+}
+문장::EX.EX전체메뉴라인문장
+{$$$세션.ex_fullmenu_cur_food$$$($$$세션.ex_fullmenu_cur_cost$$$원)
+}
+문장::EX.EX전체메뉴요약문장
+{$$$세션.ex_area_name$$$ 전체메뉴(최대 20건): $$$세션.ex_summary_lines$$$}
+문장::EX.EX전체메뉴결과없음문장
+{$$$세션.ex_area_name$$$ 관련 휴게소 메뉴 정보가 없습니다.}
+문장::TELEGRAM.EX전체메뉴파싱실패문장
+{휴게소명을 입력해주세요. 예) 전체메뉴 안성}
