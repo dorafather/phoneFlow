@@ -19,6 +19,7 @@
   NTS.수신메시지.응답코드 == 200    처리.NTS응답처리
   KOBIS.수신메시지.응답코드 == 200    처리.KOBIS응답처리
   EX.수신메시지.응답코드 == 200    처리.EX응답처리
+  PHARM.수신메시지.응답코드 == 200    처리.PHARM목록응답처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -36,6 +37,7 @@
     함수.앞자리비교(cmd_병원,세션.chat_input_text,병원)
     함수.앞자리비교(cmd_응급실,세션.chat_input_text,응급실)
     함수.앞자리비교(cmd_당직병원,세션.chat_input_text,당직병원)
+    함수.앞자리비교(cmd_약국,세션.chat_input_text,약국)
     함수.앞자리비교(cmd_사업자,세션.chat_input_text,사업자)
     함수.앞자리비교(cmd_영화,세션.chat_input_text,영화)
     함수.앞자리비교(cmd_주유소,세션.chat_input_text,주유소)
@@ -73,6 +75,8 @@
     처리.텔레그램응급실명령처리
   그외그외(세션.cmd_당직병원 == 1)
     처리.텔레그램당직병원명령처리
+  그외그외(세션.cmd_약국 == 1)
+    처리.텔레그램약국명령처리
   그외그외(세션.cmd_사업자 == 1)
     처리.텔레그램사업자명령처리
   그외그외(세션.cmd_영화 == 1)
@@ -139,6 +143,7 @@
 병원 [지역] - 해당 지역 병원 요일별 진료시간/야간진료 여부 조회(최근 5곳, 드로워 > 병원 > 지역 선택에서 검색)
 응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(드로워 > 응급실 > 가용병상 조회에서 검색 권장, 직접 입력 시 정확한 공식 명칭 필요: 예) 응급실 서울특별시 종로구)
 당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 드로워 > 당직병원 > 지역 조회에서 검색 권장, 직접 입력 예) 당직병원 서울특별시 종로구)
+약국 [시도] [시군구] - 해당 지역 약국 요일별 진료(영업)시간 조회(최근 5곳, 휴일 영업 여부 확인에 유용, 예) 약국 서울특별시 종로구)
 사업자 [사업자등록번호] - 사업자등록 상태(휴업/폐업/과세유형) 조회(10자리, 하이픈 없이 숫자만, 예: 사업자 1248100998)
 영화 - 어제 날짜 기준 일별 박스오피스 순위 조회(상위 5위)
 영화 [날짜] - 해당 날짜 박스오피스 순위 조회(YYYYMMDD, 예: 영화 20261010)
@@ -4186,6 +4191,222 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.egen_region_name$$$ 지역에 등록된 응급의료기관 정보가 없습니다.}
 문장::TELEGRAM.EGEN파싱실패문장
 {지역을 이해하지 못했습니다. "응급실 [시도] [시군구]" 또는 "당직병원 [시도] [시군구]" 형태로 입력해주세요.}
+처리::TELEGRAM.텔레그램약국명령처리
+{
+  만약에(참)
+    함수.단어분리(pharm_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(pharm_rest,세션.리스트.pharm_cmd_word_list,1)
+    처리.PHARM약국명령파싱
+}
+처리::PHARM.PHARM약국명령파싱
+{
+  만약에(세션.pharm_rest == NULL)
+    함수.저장(pharm_reply_text,문장.PHARM파싱실패문장)
+    전송.PHARM응답전송
+  그외
+    함수.부분비교(pharm_has_at,세션.pharm_rest,@)
+    처리.PHARM약국형식분기
+}
+처리::PHARM.PHARM약국형식분기
+{
+  만약에(세션.pharm_has_at == 1)
+    함수.쪼개기(pharm_at_parts,세션.pharm_rest,@)
+    함수.저장(pharm_stage2,세션.리스트.pharm_at_parts[0])
+    함수.저장(pharm_stage1,세션.리스트.pharm_at_parts[1])
+    전송.PHARM목록조회전송
+  그외
+    함수.단어분리(pharm_region_word_list,세션.pharm_rest)
+    처리.PHARM약국지역분기
+}
+처리::PHARM.PHARM약국지역분기
+{
+  만약에(세션.리스트.pharm_region_word_list.SIZE == 2)
+    함수.저장(pharm_stage1,세션.리스트.pharm_region_word_list[0])
+    함수.저장(pharm_stage2,세션.리스트.pharm_region_word_list[1])
+    전송.PHARM목록조회전송
+  그외
+    함수.저장(pharm_reply_text,문장.PHARM파싱실패문장)
+    전송.PHARM응답전송
+}
+전송::PHARM.PHARM목록조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.PHARM.domain
+  전송메시지.주소.경로 = /getParmacyListInfoInqire
+  전송메시지.주소.파라미터[0].key = ServiceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = Q0
+  전송메시지.주소.파라미터[1].val = 세션.pharm_stage1
+  전송메시지.주소.파라미터[2].key = Q1
+  전송메시지.주소.파라미터[2].val = 세션.pharm_stage2
+  전송메시지.주소.파라미터[3].key = numOfRows
+  전송메시지.주소.파라미터[3].val = 5
+  전송메시지.주소.파라미터[4].key = pageNo
+  전송메시지.주소.파라미터[4].val = 1
+  전송메시지.주소.파라미터[5].key = _type
+  전송메시지.주소.파라미터[5].val = json
+}
+처리::PHARM.PHARM목록응답처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(pharm_reply_text,문장.PHARM없음문장)
+    전송.PHARM응답전송
+  그외그외(수신메시지.response.body.totalCount == 1)
+    함수.저장(pharm_cur_name,수신메시지.response.body.items.item.dutyName)
+    함수.저장(pharm_cur_addr,수신메시지.response.body.items.item.dutyAddr)
+    함수.저장(pharm_cur_tel,수신메시지.response.body.items.item.dutyTel1)
+    처리.PHARM단일필드_mon확인
+  그외
+    함수.객체저장(pharm_items,수신메시지.response.body.items.item)
+    함수.저장(pharm_idx,0)
+    함수.저장(pharm_count,0)
+    처리.PHARM항목순회
+}
+처리::PHARM.PHARM단일필드_mon확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime1s == NULL)
+    함수.저장(pharm_cur_mon_s,-)
+    함수.저장(pharm_cur_mon_e,-)
+    처리.PHARM단일필드_sat확인
+  그외
+    함수.저장(pharm_cur_mon_s,수신메시지.response.body.items.item.dutyTime1s)
+    함수.저장(pharm_cur_mon_e,수신메시지.response.body.items.item.dutyTime1c)
+    처리.PHARM단일필드_sat확인
+}
+처리::PHARM.PHARM단일필드_sat확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime6s == NULL)
+    함수.저장(pharm_cur_sat_s,-)
+    함수.저장(pharm_cur_sat_e,-)
+    처리.PHARM단일필드_sun확인
+  그외
+    함수.저장(pharm_cur_sat_s,수신메시지.response.body.items.item.dutyTime6s)
+    함수.저장(pharm_cur_sat_e,수신메시지.response.body.items.item.dutyTime6c)
+    처리.PHARM단일필드_sun확인
+}
+처리::PHARM.PHARM단일필드_sun확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime7s == NULL)
+    함수.저장(pharm_cur_sun_s,-)
+    함수.저장(pharm_cur_sun_e,-)
+    처리.PHARM단일필드_hol확인
+  그외
+    함수.저장(pharm_cur_sun_s,수신메시지.response.body.items.item.dutyTime7s)
+    함수.저장(pharm_cur_sun_e,수신메시지.response.body.items.item.dutyTime7c)
+    처리.PHARM단일필드_hol확인
+}
+처리::PHARM.PHARM단일필드_hol확인
+{
+  만약에(수신메시지.response.body.items.item.dutyTime8s == NULL)
+    함수.저장(pharm_cur_hol_s,-)
+    함수.저장(pharm_cur_hol_e,-)
+    처리.PHARM단일결과반영
+  그외
+    함수.저장(pharm_cur_hol_s,수신메시지.response.body.items.item.dutyTime8s)
+    함수.저장(pharm_cur_hol_e,수신메시지.response.body.items.item.dutyTime8c)
+    처리.PHARM단일결과반영
+}
+처리::PHARM.PHARM단일결과반영
+{
+  만약에(참)
+    함수.저장(pharm_summary_lines,문장.PHARM라인문장)
+    함수.저장(pharm_reply_text,문장.PHARM요약문장_단일)
+    전송.PHARM응답전송
+}
+처리::PHARM.PHARM항목순회
+{
+  만약에(세션.객체.pharm_items[세션.pharm_idx].dutyName == NULL)
+    처리.PHARM목록결과반영
+  그외그외(세션.pharm_count >= 5)
+    처리.PHARM목록결과반영
+  그외
+    함수.저장(pharm_cur_name,세션.객체.pharm_items[세션.pharm_idx].dutyName)
+    함수.저장(pharm_cur_addr,세션.객체.pharm_items[세션.pharm_idx].dutyAddr)
+    함수.저장(pharm_cur_tel,세션.객체.pharm_items[세션.pharm_idx].dutyTel1)
+    처리.PHARM필드_mon확인
+}
+처리::PHARM.PHARM필드_mon확인
+{
+  만약에(세션.객체.pharm_items[세션.pharm_idx].dutyTime1s == NULL)
+    함수.저장(pharm_cur_mon_s,-)
+    함수.저장(pharm_cur_mon_e,-)
+    처리.PHARM필드_sat확인
+  그외
+    함수.저장(pharm_cur_mon_s,세션.객체.pharm_items[세션.pharm_idx].dutyTime1s)
+    함수.저장(pharm_cur_mon_e,세션.객체.pharm_items[세션.pharm_idx].dutyTime1c)
+    처리.PHARM필드_sat확인
+}
+처리::PHARM.PHARM필드_sat확인
+{
+  만약에(세션.객체.pharm_items[세션.pharm_idx].dutyTime6s == NULL)
+    함수.저장(pharm_cur_sat_s,-)
+    함수.저장(pharm_cur_sat_e,-)
+    처리.PHARM필드_sun확인
+  그외
+    함수.저장(pharm_cur_sat_s,세션.객체.pharm_items[세션.pharm_idx].dutyTime6s)
+    함수.저장(pharm_cur_sat_e,세션.객체.pharm_items[세션.pharm_idx].dutyTime6c)
+    처리.PHARM필드_sun확인
+}
+처리::PHARM.PHARM필드_sun확인
+{
+  만약에(세션.객체.pharm_items[세션.pharm_idx].dutyTime7s == NULL)
+    함수.저장(pharm_cur_sun_s,-)
+    함수.저장(pharm_cur_sun_e,-)
+    처리.PHARM필드_hol확인
+  그외
+    함수.저장(pharm_cur_sun_s,세션.객체.pharm_items[세션.pharm_idx].dutyTime7s)
+    함수.저장(pharm_cur_sun_e,세션.객체.pharm_items[세션.pharm_idx].dutyTime7c)
+    처리.PHARM필드_hol확인
+}
+처리::PHARM.PHARM필드_hol확인
+{
+  만약에(세션.객체.pharm_items[세션.pharm_idx].dutyTime8s == NULL)
+    함수.저장(pharm_cur_hol_s,-)
+    함수.저장(pharm_cur_hol_e,-)
+    처리.PHARM항목추가
+  그외
+    함수.저장(pharm_cur_hol_s,세션.객체.pharm_items[세션.pharm_idx].dutyTime8s)
+    함수.저장(pharm_cur_hol_e,세션.객체.pharm_items[세션.pharm_idx].dutyTime8c)
+    처리.PHARM항목추가
+}
+처리::PHARM.PHARM항목추가
+{
+  만약에(세션.pharm_count == 0)
+    함수.저장(pharm_summary_lines,문장.PHARM라인문장)
+    함수.더하기(pharm_count,세션.pharm_count,1)
+    함수.더하기(pharm_idx,세션.pharm_idx,1)
+    처리.PHARM항목순회
+  그외
+    함수.붙이기(pharm_summary_lines,문장.PHARM라인문장)
+    함수.더하기(pharm_count,세션.pharm_count,1)
+    함수.더하기(pharm_idx,세션.pharm_idx,1)
+    처리.PHARM항목순회
+}
+처리::PHARM.PHARM목록결과반영
+{
+  만약에(세션.pharm_count == 0)
+    함수.저장(pharm_reply_text,문장.PHARM없음문장)
+    전송.PHARM응답전송
+  그외
+    함수.저장(pharm_reply_text,문장.PHARM요약문장)
+    전송.PHARM응답전송
+}
+전송::PHARM.PHARM응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.pharm_reply_text
+}
+문장::PHARM.PHARM라인문장
+{$$$세션.pharm_cur_name$$$ ($$$세션.pharm_cur_tel$$$) $$$세션.pharm_cur_addr$$$ / 평일 $$$세션.pharm_cur_mon_s$$$~$$$세션.pharm_cur_mon_e$$$ / 토 $$$세션.pharm_cur_sat_s$$$~$$$세션.pharm_cur_sat_e$$$ / 일 $$$세션.pharm_cur_sun_s$$$~$$$세션.pharm_cur_sun_e$$$ / 공휴일 $$$세션.pharm_cur_hol_s$$$~$$$세션.pharm_cur_hol_e$$$
+}
+문장::PHARM.PHARM요약문장
+{$$$세션.pharm_stage2$$$ 약국 진료(영업)시간 (최근 $$$세션.pharm_count$$$곳): $$$세션.pharm_summary_lines$$$}
+문장::PHARM.PHARM요약문장_단일
+{$$$세션.pharm_stage2$$$ 약국 진료(영업)시간 (1곳): $$$세션.pharm_summary_lines$$$}
+문장::PHARM.PHARM없음문장
+{$$$세션.pharm_stage2$$$ 지역에 등록된 약국 정보가 없습니다.}
+문장::TELEGRAM.PHARM파싱실패문장
+{지역을 이해하지 못했습니다. "약국 [시도] [시군구]" 형태로 입력해주세요. 예) 약국 서울특별시 종로구}
 처리::TELEGRAM.텔레그램사업자명령처리
 {
   만약에(참)

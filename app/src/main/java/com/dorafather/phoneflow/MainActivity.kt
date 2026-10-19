@@ -836,6 +836,18 @@ private fun CommandDrawerContent(
                                         .clickableCompat { onEgenPickerRequested("당직병원 ") }
                                 )
                             }
+                        } else if (group.label == "약국" && cmd.label == "지역 조회") {
+                            // 같은 EGEN 지역 검색 화면 재사용(국립중앙의료원 Q0/Q1도
+                            // 공식 명칭을 그대로 요구해 당직병원과 동일한 함정이 있음).
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onEgenPickerRequested("약국 ") }
+                                )
+                            }
                         } else if (group.label == "주유소" && cmd.label == "내 주변") {
                             // GPS로 가장 가까운 휴게소 5곳을 로컬 DB(ex_rest_areas.db)에서
                             // 바로 계산한다(행사 "내 주변"과 달리 외부 API 호출 없음 -

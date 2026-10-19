@@ -87,6 +87,14 @@
       ]
     },
     {
+      "label": "약국",
+      "icon": "💊",
+      "requires_section": "PHARM",
+      "items": [
+        {"label": "지역 조회", "insert": "약국 "}
+      ]
+    },
+    {
       "label": "사업자",
       "icon": "🧾",
       "requires_section": "NTS",
