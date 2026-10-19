@@ -100,6 +100,9 @@
       "requires_section": "PARKING",
       "items": [
         {"label": "지역 선택", "insert": "주차장 "},
+        {"label": "무료만 보기", "insert": "주차장무료 "},
+        {"label": "유료만 보기", "insert": "주차장유료 "},
+        {"label": "저렴한 순", "insert": "주차장 "},
         {"label": "내 주변", "insert": "주차장 "}
       ]
     },

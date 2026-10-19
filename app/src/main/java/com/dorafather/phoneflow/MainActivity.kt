@@ -88,6 +88,14 @@ import java.util.Locale
 
 private const val TAG = "phoneFlow/JNI"
 
+// LAWD_PICKER가 "실거래가 지역추가 "/"주차장 "처럼 보통은 고른 지역을 입력창에
+// 채우는 접두어로 쓰이지만, "주차장 저렴한 순"만은 다르다(2026-10-19) - 가격
+// 비교엔 정렬이 필요한데 이 DSL 엔진엔 정렬 함수가 없어(ParkingNearbyStore
+// 주석 참고) rest.sce로 보낼 수 있는 "한 줄 명령"이 아니기 때문이다. 이
+// prefix를 lawdPickerPrefix에 세팅해두면 LAWD_PICKER의 콜백이 입력창을
+// 채우는 대신 바로 onParkingCheapestResolved를 호출하도록 분기한다.
+private const val PARKING_CHEAPEST_MARKER = "__주차장가격순__"
+
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
 private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER }
@@ -158,7 +166,8 @@ class MainActivity : ComponentActivity() {
                         messages = messages,
                         filesDir = filesDir,
                         onSend = ::sendChatInput,
-                        onNearbyParkingResolved = ::handleNearbyParkingRequest
+                        onNearbyParkingResolved = ::handleNearbyParkingRequest,
+                        onParkingCheapestResolved = ::handleParkingCheapestRequest
                     )
                 }
             }
@@ -296,6 +305,50 @@ class MainActivity : ComponentActivity() {
         return "${match.parentDisplayName} 내 주변 주차장 (가까운 순 ${nearest.size}곳):\n$lines"
     }
 
+    /**
+     * "주차장 > 저렴한 순" 전용(2026-10-19) - 기본요금 비교엔 정렬이 필요하고
+     * 요금은 시설정보가 아니라 운영정보(PrkOprInfo_v1)에만 있어 두 오퍼레이션을
+     * prk_center_id로 조인해야 한다(ParkingNearbyStore.findCheapest 참고) -
+     * 내 주변과 같은 이유로 rest.sce를 거치지 않는다. 좌표가 아니라 이미
+     * LawdPickerScreen에서 고른 지역코드를 그대로 받는다는 점만 다르다.
+     */
+    private fun handleParkingCheapestRequest(regionName: String, code5: String) {
+        appendMessage(ChatMessage(text = "주차장 저렴한 순 ($regionName)", fromUser = true))
+        lifecycleScope.launch(Dispatchers.IO) {
+            val resultText = try {
+                resolveParkingCheapestText(regionName, code5)
+            } catch (t: Throwable) {
+                Log.e(TAG, "주차장 저렴한 순 조회 실패", t)
+                "저렴한 순 주차장을 조회하지 못했습니다: ${t.message}"
+            }
+            withContext(Dispatchers.Main) {
+                appendMessage(ChatMessage(text = resultText, fromUser = false))
+            }
+        }
+    }
+
+    private fun resolveParkingCheapestText(regionName: String, code5: String): String {
+        val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA")
+            ?: return "K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요."
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["PARKING"]?.get("domain")
+            ?: "https://apis.data.go.kr/B553881/Parking_v1"
+
+        val cheapest = ParkingNearbyStore.findCheapest(
+            domain = domain,
+            serviceKey = serviceKey,
+            sidoCd = code5.take(2),
+            sigunguCd = code5
+        )
+        if (cheapest.isEmpty()) {
+            return "$regionName 지역에 요금 정보가 있는 주차장을 찾지 못했습니다."
+        }
+        val lines = cheapest.joinToString("\n") { p ->
+            val feeText = if (p.baseChargeWon == 0) "무료" else "${p.baseChargeWon}원~"
+            "${p.name} (${p.addr}) $feeText / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
+        }
+        return "$regionName 주차장 요금 낮은 순 ${cheapest.size}곳:\n$lines"
+    }
+
     private fun extractDisplayText(json: JSONObject): String {
         // 핑 테스트 결과("봇응답" 이벤트, text 필드)와 그 외 메시지 모두
         // 안전하게 사람이 읽을 수 있는 형태로 보여준다.
@@ -315,7 +368,8 @@ private fun AppRoot(
     messages: List<ChatMessage>,
     filesDir: File,
     onSend: (String) -> Unit,
-    onNearbyParkingResolved: (Double, Double) -> Unit
+    onNearbyParkingResolved: (Double, Double) -> Unit,
+    onParkingCheapestResolved: (String, String) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -637,8 +691,15 @@ private fun AppRoot(
                     Screen.PROVIDER_DETAIL -> ProviderSettingsScreen(filesDir = filesDir, section = selectedProvider)
                     Screen.SCENARIO -> ScenarioViewerScreen(filesDir = filesDir)
                     Screen.LAWD_PICKER -> LawdPickerScreen(filesDir = filesDir) { nameCodeToken ->
-                        val insert = "$lawdPickerPrefix$nameCodeToken"
-                        input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        if (lawdPickerPrefix == PARKING_CHEAPEST_MARKER) {
+                            val parts = nameCodeToken.split("@")
+                            if (parts.size == 2) {
+                                onParkingCheapestResolved(parts[0], parts[1])
+                            }
+                        } else {
+                            val insert = "$lawdPickerPrefix$nameCodeToken"
+                            input = TextFieldValue(insert, selection = TextRange(insert.length))
+                        }
                         screen = Screen.CHAT
                     }
                     Screen.KMA_PICKER -> KmaPickerScreen(filesDir = filesDir) { nameNxNyToken ->
@@ -893,6 +954,35 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onLawdPickerRequested("주차장 ") }
+                                )
+                            }
+                        } else if (group.label == "주차장" && (cmd.label == "무료만 보기" || cmd.label == "유료만 보기")) {
+                            // 유료/무료 필터는 지역코드 "이름@코드"만 다르게 접두어로
+                            // 붙이면 되는 보통의 LAWD_PICKER 용법 그대로다(DSL이
+                            // parkng_chrge_se로 직접 거를 수 있어 Kotlin 개입이 필요
+                            // 없음 - "저렴한 순"/"내 주변"과 달리 이 둘은 평범한
+                            // rest.sce 명령이다).
+                            val prefix = if (cmd.label == "무료만 보기") "주차장무료 " else "주차장유료 "
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onLawdPickerRequested(prefix) }
+                                )
+                            }
+                        } else if (group.label == "주차장" && cmd.label == "저렴한 순") {
+                            // 기본요금 비교엔 정렬이 필요해(DSL엔 정렬 함수가 없음)
+                            // PARKING_CHEAPEST_MARKER로 LAWD_PICKER의 콜백을
+                            // onParkingCheapestResolved(Kotlin 직접 처리)로 분기한다.
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onLawdPickerRequested(PARKING_CHEAPEST_MARKER) }
                                 )
                             }
                         } else if (group.label == "주차장" && cmd.label == "내 주변") {
