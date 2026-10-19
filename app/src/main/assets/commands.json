@@ -99,7 +99,8 @@
       "icon": "🅿️",
       "requires_section": "PARKING",
       "items": [
-        {"label": "지역 선택", "insert": "주차장 "}
+        {"label": "지역 선택", "insert": "주차장 "},
+        {"label": "내 주변", "insert": "주차장 "}
       ]
     },
     {

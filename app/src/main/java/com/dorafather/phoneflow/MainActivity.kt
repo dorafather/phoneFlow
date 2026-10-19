@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.Geocoder
 import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
@@ -65,17 +66,25 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.dorafather.phoneflow.net.AddrIniStore
 import com.dorafather.phoneflow.net.ChatHistoryStore
 import com.dorafather.phoneflow.net.ExRestAreaStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
+import com.dorafather.phoneflow.net.IniParser
+import com.dorafather.phoneflow.net.LawdCodeStore
+import com.dorafather.phoneflow.net.ParkingNearbyStore
 import com.dorafather.phoneflow.net.WatchlistStore
 import com.dorafather.phoneflow.ui.theme.PhoneFlowBlueLight
 import com.dorafather.phoneflow.ui.theme.PhoneFlowStripeGray
 import com.dorafather.phoneflow.ui.theme.PhoneFlowTheme
 import com.notebookflow.engine.FlowBridge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 
 private const val TAG = "phoneFlow/JNI"
 
@@ -148,7 +157,8 @@ class MainActivity : ComponentActivity() {
                     AppRoot(
                         messages = messages,
                         filesDir = filesDir,
-                        onSend = ::sendChatInput
+                        onSend = ::sendChatInput,
+                        onNearbyParkingResolved = ::handleNearbyParkingRequest
                     )
                 }
             }
@@ -212,6 +222,80 @@ class MainActivity : ComponentActivity() {
         FlowBridge.nativePushEvent(event.toString())
     }
 
+    /**
+     * "주차장 > 내 주변" 전용 경로(2026-10-19) - 다른 모든 "내 주변" 기능과
+     * 달리 rest.sce를 거치지 않는다. PrkSttusInfo_v1엔 반경검색 파라미터가
+     * 없고, 이 DSL 엔진엔 정렬/제곱근 함수가 없어 실제 거리순 정렬 자체를
+     * rest.sce 안에서 할 수 없다(ParkingNearbyStore 주석 참고) - 그래서
+     * GPS 권한 확인 후 좌표를 받으면(AppRoot) 바로 여기로 넘어와 사용자
+     * 메시지를 먼저 echo하고, 지오코딩+실거리계산을 백그라운드에서 수행한
+     * 뒤 결과를 봇 메시지로 바로 추가한다(전송 버튼을 누를 DSL 명령 자체가
+     * 없으므로 - 계산된 최종 결과만 있을 뿐).
+     */
+    private fun handleNearbyParkingRequest(lat: Double, lon: Double) {
+        appendMessage(ChatMessage(text = "주차장 내 주변", fromUser = true))
+        lifecycleScope.launch(Dispatchers.IO) {
+            val resultText = try {
+                resolveNearbyParkingText(lat, lon)
+            } catch (t: Throwable) {
+                Log.e(TAG, "주차장 내 주변 조회 실패", t)
+                "내 주변 주차장을 조회하지 못했습니다: ${t.message}"
+            }
+            withContext(Dispatchers.Main) {
+                appendMessage(ChatMessage(text = resultText, fromUser = false))
+            }
+        }
+    }
+
+    private fun resolveNearbyParkingText(lat: Double, lon: Double): String {
+        val fallbackGuide = "드로워 > 주차장 > 지역 선택에서 직접 검색해주세요."
+        val address = try {
+            @Suppress("DEPRECATION")
+            Geocoder(this, Locale.KOREA).getFromLocation(lat, lon, 1)?.firstOrNull()
+        } catch (t: Throwable) {
+            Log.e(TAG, "역지오코딩 실패", t)
+            null
+        } ?: return "현재 위치를 지역으로 변환하지 못했습니다. $fallbackGuide"
+
+        val sigunguName = address.subAdminArea ?: address.locality
+            ?: return "현재 위치의 시/군/구를 확인하지 못했습니다. $fallbackGuide"
+        val sidoName = address.adminArea
+
+        // 동명 시군구가 전국에 여러 곳 있을 수 있어(중구 등), geocoder가 알려준
+        // 시/도 이름으로 교차 확인한다(LawdPickerScreen과 달리 사용자가 직접
+        // 고를 수 없는 자동 흐름이라 꼭 필요한 보정).
+        val candidates = LawdCodeStore.search(filesDir, sigunguName, limit = 30)
+        val match = candidates.firstOrNull { sidoName != null && it.fullName.startsWith(sidoName) }
+            ?: candidates.firstOrNull()
+            ?: return "\"$sigunguName\" 지역코드를 찾지 못했습니다. $fallbackGuide"
+
+        val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA")
+            ?: return "K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요."
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["PARKING"]?.get("domain")
+            ?: "https://apis.data.go.kr/B553881/Parking_v1"
+
+        val nearest = ParkingNearbyStore.findNearest(
+            domain = domain,
+            serviceKey = serviceKey,
+            sidoCd = match.parentCode5.take(2),
+            sigunguCd = match.parentCode5,
+            userLat = lat,
+            userLon = lon
+        )
+        if (nearest.isEmpty()) {
+            return "${match.parentDisplayName} 지역에 위경도 정보가 있는 주차장을 찾지 못했습니다."
+        }
+        val lines = nearest.joinToString("\n") { p ->
+            val distText = if (p.distanceMeters >= 1000) {
+                String.format(Locale.KOREA, "%.1fkm", p.distanceMeters / 1000.0)
+            } else {
+                "${p.distanceMeters}m"
+            }
+            "${p.name} (${p.addr}) $distText / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
+        }
+        return "${match.parentDisplayName} 내 주변 주차장 (가까운 순 ${nearest.size}곳):\n$lines"
+    }
+
     private fun extractDisplayText(json: JSONObject): String {
         // 핑 테스트 결과("봇응답" 이벤트, text 필드)와 그 외 메시지 모두
         // 안전하게 사람이 읽을 수 있는 형태로 보여준다.
@@ -230,7 +314,8 @@ class MainActivity : ComponentActivity() {
 private fun AppRoot(
     messages: List<ChatMessage>,
     filesDir: File,
-    onSend: (String) -> Unit
+    onSend: (String) -> Unit,
+    onNearbyParkingResolved: (Double, Double) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -371,6 +456,40 @@ private fun AppRoot(
         }
     }
 
+    // "주차장 > 내 주변"(2026-10-19 추가) - 좌표를 구하는 부분까지는 위
+    // 세 기능과 동일한 패턴이지만, 그 다음이 다르다: 입력창에 명령을 채우는
+    // 대신 좌표를 그대로 MainActivity(onNearbyParkingResolved)로 넘긴다 -
+    // 실제 거리 계산을 위해 지오코딩+API 호출+정렬이 필요해(ParkingNearbyStore
+    // 참고) 더 이상 "한 줄 채팅 명령"으로 표현할 수 없기 때문이다.
+    fun fillNearbyParkingCommand() {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val best = lm.getProviders(true)
+            .mapNotNull { provider ->
+                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+            }
+            .minByOrNull { it.accuracy }
+        if (best == null) {
+            val insert = "주차장 "
+            input = TextFieldValue(insert, selection = TextRange(insert.length))
+        } else {
+            onNearbyParkingResolved(best.latitude, best.longitude)
+        }
+    }
+    val locationPermissionLauncherParking = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyParkingCommand() }
+    fun requestNearbyParking() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyParkingCommand()
+        } else {
+            locationPermissionLauncherParking.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -433,6 +552,11 @@ private fun AppRoot(
                     },
                     onNearbyMenuRequested = {
                         requestNearbyMenu()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyParkingRequested = {
+                        requestNearbyParking()
                         screen = Screen.CHAT
                         scope.launch { drawerState.close() }
                     }
@@ -635,7 +759,8 @@ private fun CommandDrawerContent(
     onEgenPickerRequested: (String) -> Unit,
     onExPickerRequested: (String) -> Unit,
     onNearbyGasRequested: () -> Unit,
-    onNearbyMenuRequested: () -> Unit
+    onNearbyMenuRequested: () -> Unit,
+    onNearbyParkingRequested: () -> Unit
 ) {
     val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
@@ -768,6 +893,16 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onLawdPickerRequested("주차장 ") }
+                                )
+                            }
+                        } else if (group.label == "주차장" && cmd.label == "내 주변") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onNearbyParkingRequested() }
                                 )
                             }
                         } else if (group.label == "기상청" && cmd.label == "지역 추가") {
