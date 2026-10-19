@@ -246,6 +246,10 @@ private fun AppRoot(
     // 브랜드" 셋이 같이 쓴다(2026-10-13, 휴게소명 자동완성 요청) - EGEN_PICKER와
     // 동일한 prefix 패턴.
     var exPickerPrefix by remember { mutableStateOf("주유소 ") }
+    // LAWD_PICKER 화면 하나를 "실거래가 지역추가"/"주차장" 둘이 같이 쓴다
+    // (2026-10-19 주차장 기능 추가 - sigunguCd가 MOLIT과 같은 5자리 법정동코드
+    // 체계임을 확인해 새 DB 없이 재사용) - EGEN_PICKER와 동일한 prefix 패턴.
+    var lawdPickerPrefix by remember { mutableStateOf("실거래가 지역추가 ") }
     // PROVIDER_DETAIL 화면 하나를 모든 공급자(K_DATA/KOBIS/EX 등)가 같이 쓴다 -
     // 설정 화면에서 어느 공급자 카드를 눌렀는지만 기억해둔다(2026-10-12
     // "공급자별 인증키" 설계 - EGEN_PICKER의 prefix 패턴과 동일한 원리).
@@ -390,7 +394,8 @@ private fun AppRoot(
                         screen = Screen.SCENARIO
                         scope.launch { drawerState.close() }
                     },
-                    onLawdPickerRequested = {
+                    onLawdPickerRequested = { prefix ->
+                        lawdPickerPrefix = prefix
                         screen = Screen.LAWD_PICKER
                         scope.launch { drawerState.close() }
                     },
@@ -508,9 +513,7 @@ private fun AppRoot(
                     Screen.PROVIDER_DETAIL -> ProviderSettingsScreen(filesDir = filesDir, section = selectedProvider)
                     Screen.SCENARIO -> ScenarioViewerScreen(filesDir = filesDir)
                     Screen.LAWD_PICKER -> LawdPickerScreen(filesDir = filesDir) { nameCodeToken ->
-                        // 지역추가 ONE 경로만 연결한다(2026-10-08 요청 범위) - "실거래가
-                        // [지역명] [계약년월]" 1회성 조회는 이 화면과 연결하지 않았다.
-                        val insert = "실거래가 지역추가 $nameCodeToken"
+                        val insert = "$lawdPickerPrefix$nameCodeToken"
                         input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
@@ -624,7 +627,7 @@ private fun CommandDrawerContent(
     onCommandPicked: (String) -> Unit,
     onSettingsPicked: () -> Unit,
     onScenarioPicked: () -> Unit,
-    onLawdPickerRequested: () -> Unit,
+    onLawdPickerRequested: (String) -> Unit,
     onKmaPickerRequested: () -> Unit,
     onFestivalPickerRequested: () -> Unit,
     onNearbyFestivalRequested: () -> Unit,
@@ -751,7 +754,20 @@ private fun CommandDrawerContent(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                                        .clickableCompat { onLawdPickerRequested() }
+                                        .clickableCompat { onLawdPickerRequested("실거래가 지역추가 ") }
+                                )
+                            }
+                        } else if (group.label == "주차장" && cmd.label == "지역 선택") {
+                            // 주차장도 관심지역 등록 없는 조회 전용 - sigunguCd가 MOLIT과
+                            // 같은 5자리 법정동코드 체계임을 확인해 LAWD_PICKER를 그대로
+                            // 재사용한다(2026-10-19).
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onLawdPickerRequested("주차장 ") }
                                 )
                             }
                         } else if (group.label == "기상청" && cmd.label == "지역 추가") {

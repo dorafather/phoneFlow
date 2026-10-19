@@ -20,6 +20,7 @@
   KOBIS.수신메시지.응답코드 == 200    처리.KOBIS응답처리
   EX.수신메시지.응답코드 == 200    처리.EX응답처리
   PHARM.수신메시지.응답코드 == 200    처리.PHARM목록응답처리
+  PARKING.수신메시지.응답코드 == 200    처리.PARKING목록응답처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -38,6 +39,7 @@
     함수.앞자리비교(cmd_응급실,세션.chat_input_text,응급실)
     함수.앞자리비교(cmd_당직병원,세션.chat_input_text,당직병원)
     함수.앞자리비교(cmd_약국,세션.chat_input_text,약국)
+    함수.앞자리비교(cmd_주차장,세션.chat_input_text,주차장)
     함수.앞자리비교(cmd_사업자,세션.chat_input_text,사업자)
     함수.앞자리비교(cmd_영화,세션.chat_input_text,영화)
     함수.앞자리비교(cmd_주유소,세션.chat_input_text,주유소)
@@ -77,6 +79,8 @@
     처리.텔레그램당직병원명령처리
   그외그외(세션.cmd_약국 == 1)
     처리.텔레그램약국명령처리
+  그외그외(세션.cmd_주차장 == 1)
+    처리.텔레그램주차장명령처리
   그외그외(세션.cmd_사업자 == 1)
     처리.텔레그램사업자명령처리
   그외그외(세션.cmd_영화 == 1)
@@ -144,6 +148,7 @@
 응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(드로워 > 응급실 > 가용병상 조회에서 검색 권장, 직접 입력 시 정확한 공식 명칭 필요: 예) 응급실 서울특별시 종로구)
 당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 드로워 > 당직병원 > 지역 조회에서 검색 권장, 직접 입력 예) 당직병원 서울특별시 종로구)
 약국 [시도] [시군구] - 해당 지역 약국 요일별 진료(영업)시간 조회(최근 5곳, 휴일 영업 여부 확인에 유용, 예) 약국 서울특별시 종로구)
+주차장 [지역명]@[코드] - 해당 지역 주차장 시설정보 조회(최근 5곳, 드로워 > 주차장 > 지역 선택에서 검색)
 사업자 [사업자등록번호] - 사업자등록 상태(휴업/폐업/과세유형) 조회(10자리, 하이픈 없이 숫자만, 예: 사업자 1248100998)
 영화 - 어제 날짜 기준 일별 박스오피스 순위 조회(상위 5위)
 영화 [날짜] - 해당 날짜 박스오피스 순위 조회(YYYYMMDD, 예: 영화 20261010)
@@ -4407,6 +4412,112 @@ $$$세션.keco_watch_alert_text$$$}
 {$$$세션.pharm_stage2$$$ 지역에 등록된 약국 정보가 없습니다.}
 문장::TELEGRAM.PHARM파싱실패문장
 {지역을 이해하지 못했습니다. "약국 [시도] [시군구]" 형태로 입력해주세요. 예) 약국 서울특별시 종로구}
+처리::TELEGRAM.텔레그램주차장명령처리
+{
+  만약에(참)
+    함수.단어분리(parking_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.parking_cmd_word_list,1)
+    처리.PARKING명령파싱
+}
+처리::PARKING.PARKING명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(parking_reply_text,문장.PARKING파싱실패문장)
+    전송.PARKING응답전송
+  그외
+    함수.쪼개기(parking_region_parts,세션.cmd_rest,@)
+    처리.PARKING지역코드분기
+}
+처리::PARKING.PARKING지역코드분기
+{
+  만약에(세션.리스트.parking_region_parts.SIZE == 2)
+    함수.저장(parking_region_name,세션.리스트.parking_region_parts[0])
+    함수.저장(parking_code5,세션.리스트.parking_region_parts[1])
+    함수.추출(parking_sido_cd,세션.parking_code5,0,2)
+    전송.PARKING목록조회전송
+  그외
+    함수.저장(parking_reply_text,문장.PARKING파싱실패문장)
+    전송.PARKING응답전송
+}
+전송::PARKING.PARKING목록조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.PARKING.domain
+  전송메시지.주소.경로 = /PrkSttusInfo_v1
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = numOfRows
+  전송메시지.주소.파라미터[1].val = 5
+  전송메시지.주소.파라미터[2].key = pageNo
+  전송메시지.주소.파라미터[2].val = 1
+  전송메시지.주소.파라미터[3].key = format
+  전송메시지.주소.파라미터[3].val = 2
+  전송메시지.주소.파라미터[4].key = sidoCd
+  전송메시지.주소.파라미터[4].val = 세션.parking_sido_cd
+  전송메시지.주소.파라미터[5].key = sigunguCd
+  전송메시지.주소.파라미터[5].val = 세션.parking_code5
+}
+처리::PARKING.PARKING목록응답처리
+{
+  만약에(수신메시지.totalCount == 0)
+    함수.저장(parking_reply_text,문장.PARKING없음문장)
+    전송.PARKING응답전송
+  그외
+    함수.객체저장(parking_items,수신메시지.PrkSttusInfo)
+    함수.저장(parking_idx,0)
+    함수.저장(parking_count,0)
+    처리.PARKING항목순회
+}
+처리::PARKING.PARKING항목순회
+{
+  만약에(세션.객체.parking_items[세션.parking_idx].prk_center_id == NULL)
+    처리.PARKING결과반영
+  그외그외(세션.parking_count >= 5)
+    처리.PARKING결과반영
+  그외
+    함수.저장(parking_cur_name,세션.객체.parking_items[세션.parking_idx].prk_plce_nm)
+    함수.저장(parking_cur_addr,세션.객체.parking_items[세션.parking_idx].prk_plce_adres)
+    함수.저장(parking_cur_co,세션.객체.parking_items[세션.parking_idx].prk_cmprt_co)
+    함수.저장(parking_cur_fee,세션.객체.parking_items[세션.parking_idx].parkng_chrge_se_nm)
+    함수.저장(parking_cur_agent,세션.객체.parking_items[세션.parking_idx].prk_manage_agent_nm)
+    처리.PARKING항목추가
+}
+처리::PARKING.PARKING항목추가
+{
+  만약에(세션.parking_count == 0)
+    함수.저장(parking_summary_lines,문장.PARKING라인문장)
+    함수.더하기(parking_count,세션.parking_count,1)
+    함수.더하기(parking_idx,세션.parking_idx,1)
+    처리.PARKING항목순회
+  그외
+    함수.붙이기(parking_summary_lines,문장.PARKING라인문장)
+    함수.더하기(parking_count,세션.parking_count,1)
+    함수.더하기(parking_idx,세션.parking_idx,1)
+    처리.PARKING항목순회
+}
+처리::PARKING.PARKING결과반영
+{
+  만약에(세션.parking_count == 0)
+    함수.저장(parking_reply_text,문장.PARKING없음문장)
+    전송.PARKING응답전송
+  그외
+    함수.저장(parking_reply_text,문장.PARKING요약문장)
+    전송.PARKING응답전송
+}
+전송::PARKING.PARKING응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.parking_reply_text
+}
+문장::PARKING.PARKING라인문장
+{$$$세션.parking_cur_name$$$ ($$$세션.parking_cur_addr$$$) $$$세션.parking_cur_co$$$면 / $$$세션.parking_cur_fee$$$ / $$$세션.parking_cur_agent$$$
+}
+문장::PARKING.PARKING요약문장
+{$$$세션.parking_region_name$$$ 주차장 (최근 $$$세션.parking_count$$$곳): $$$세션.parking_summary_lines$$$}
+문장::PARKING.PARKING없음문장
+{$$$세션.parking_region_name$$$ 지역에 등록된 주차장 정보가 없습니다.}
+문장::TELEGRAM.PARKING파싱실패문장
+{지역을 이해하지 못했습니다. 드로워 > 주차장 > 지역 선택에서 검색해주세요.}
 처리::TELEGRAM.텔레그램사업자명령처리
 {
   만약에(참)

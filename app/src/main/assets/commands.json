@@ -95,6 +95,14 @@
       ]
     },
     {
+      "label": "주차장",
+      "icon": "🅿️",
+      "requires_section": "PARKING",
+      "items": [
+        {"label": "지역 선택", "insert": "주차장 "}
+      ]
+    },
+    {
       "label": "사업자",
       "icon": "🧾",
       "requires_section": "NTS",
