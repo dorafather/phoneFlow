@@ -366,20 +366,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 모든 "내 주변" 기능(행사/주유소/메뉴/주차장)이 공유하는 위치 획득 함수
+// 모든 "내 주변" 기능(행사/주유소/메뉴/주차장)이 공유하는 위치 획득 함수.
 // (2026-10-20 "회사로 자리를 이동했는데 GPS 정보는 계속 집"이라는 실사용
-// 버그 리포트로 수정) - 이전엔 전부 LocationManager.getLastKnownLocation()을
-// 정확도(accuracy)로만 골랐는데, 이 함수는 "새 위치를 요청"하는 게
-// 아니라 "OS가 과거 언젠가 캐시해둔 값을 그냥 돌려주는" 함수라서(실제로
-// 언제 적힌 값인지는 전혀 보장하지 않음), 사용자가 몇 시간 전 집에서
-// 얻어둔 정확한 GPS 고정값이 방금 회사에서 얻은 덜 정확한 네트워크
-// 위치보다 "정확도"만 보면 항상 이겨버려 계속 옛 위치가 나왔다.
-// 이제는 먼저 캐시가 충분히 최신(FRESH_LOCATION_MAX_AGE_MS 이내)인지
-// 시간을 확인하고, 아니면 실제로 새 위치를 요청해(타임아웃 있음) 받는다 -
-// Play Services 등 새 의존성 없이 프레임워크 LocationManager만 쓰는
-// 기존 설계 원칙은 그대로 유지했다.
+// 버그 리포트로 1차 수정했다가, 바로 다음 리포트 - "회사에선 실패, 집에
+// 오니 됨" - 로 2차 수정됨.) 1차 수정은 "캐시가 오래됐으면 새 위치를
+// 요청하되, 타임아웃되면 그 오래된 캐시로라도 폴백한다"였는데, 바로 이
+// 폴백이 범인이었다 - 회사(실내, GPS/네트워크 신호가 약한 환경)에서는
+// 새 위치 요청이 타임아웃까지 하나도 못 받는 경우가 실제로 있고, 그러면
+// 결국 "오래된 폴백"이 집에서 얻은 캐시를 그대로 돌려줘 똑같은 증상이
+// 재현된다(사용자 입장에선 "검색이 안 됨"이나 마찬가지 - 엉뚱한 위치
+// 기준으로 나온 결과니까). 이번엔 폴백에도 신선도 상한
+// (FRESH_LOCATION_FALLBACK_MAX_AGE_MS)을 둬서, 그 상한보다 오래된
+// 캐시는 아예 쓰지 않고 null(실패)을 돌려준다 - "엉뚱한 옛 위치로
+// 조용히 성공한 척"하는 것보다 "지금 위치를 못 구했다"고 솔직하게 실패하는
+// 쪽이 사용자에게 훨씬 낫다. Play Services 등 새 의존성 없이 프레임워크
+// LocationManager만 쓰는 기존 설계 원칙은 그대로 유지했다.
 private const val FRESH_LOCATION_MAX_AGE_MS = 3 * 60 * 1000L
-private const val FRESH_LOCATION_TIMEOUT_MS = 8_000L
+private const val FRESH_LOCATION_TIMEOUT_MS = 15_000L
+private const val FRESH_LOCATION_FALLBACK_MAX_AGE_MS = 10 * 60 * 1000L
 
 private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit) {
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -398,9 +402,10 @@ private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit
         return
     }
 
-    // 캐시가 전부 오래됐다 - 실제로 새 위치를 요청한다. 실내 등 GPS 수신이
-    // 느린 상황을 고려해 타임아웃을 두고, 그래도 못 받으면 그나마 있는
-    // (오래된) 캐시로 폴백한다 - 완전히 실패시키는 것보단 낫다.
+    // 캐시가 전부 오래됐다 - 실제로 새 위치를 요청한다. 타임아웃 안에 새
+    // 위치를 하나도 못 받으면, 그나마 있는 캐시 중 "그래도 너무 오래되진
+    // 않은"(FRESH_LOCATION_FALLBACK_MAX_AGE_MS 이내) 것만 폴백으로 쓰고,
+    // 그마저 없으면 null(실패)을 돌려준다.
     val handler = Handler(Looper.getMainLooper())
     var finished = false
     val listener = object : LocationListener {
@@ -433,7 +438,11 @@ private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit
         if (!finished) {
             finished = true
             lm.removeUpdates(listener)
-            onResult(cachedLocations().minByOrNull { it.accuracy })
+            val timeoutNow = System.currentTimeMillis()
+            val fallback = cachedLocations()
+                .filter { timeoutNow - it.time <= FRESH_LOCATION_FALLBACK_MAX_AGE_MS }
+                .minByOrNull { it.accuracy }
+            onResult(fallback)
         }
     }, FRESH_LOCATION_TIMEOUT_MS)
 }
