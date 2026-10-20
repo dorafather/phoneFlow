@@ -7,8 +7,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -362,6 +366,78 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// 모든 "내 주변" 기능(행사/주유소/메뉴/주차장)이 공유하는 위치 획득 함수
+// (2026-10-20 "회사로 자리를 이동했는데 GPS 정보는 계속 집"이라는 실사용
+// 버그 리포트로 수정) - 이전엔 전부 LocationManager.getLastKnownLocation()을
+// 정확도(accuracy)로만 골랐는데, 이 함수는 "새 위치를 요청"하는 게
+// 아니라 "OS가 과거 언젠가 캐시해둔 값을 그냥 돌려주는" 함수라서(실제로
+// 언제 적힌 값인지는 전혀 보장하지 않음), 사용자가 몇 시간 전 집에서
+// 얻어둔 정확한 GPS 고정값이 방금 회사에서 얻은 덜 정확한 네트워크
+// 위치보다 "정확도"만 보면 항상 이겨버려 계속 옛 위치가 나왔다.
+// 이제는 먼저 캐시가 충분히 최신(FRESH_LOCATION_MAX_AGE_MS 이내)인지
+// 시간을 확인하고, 아니면 실제로 새 위치를 요청해(타임아웃 있음) 받는다 -
+// Play Services 등 새 의존성 없이 프레임워크 LocationManager만 쓰는
+// 기존 설계 원칙은 그대로 유지했다.
+private const val FRESH_LOCATION_MAX_AGE_MS = 3 * 60 * 1000L
+private const val FRESH_LOCATION_TIMEOUT_MS = 8_000L
+
+private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit) {
+    val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    val providers = lm.getProviders(true)
+
+    fun cachedLocations(): List<Location> = providers.mapNotNull { provider ->
+        try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+    }
+
+    val now = System.currentTimeMillis()
+    val freshCached = cachedLocations()
+        .filter { now - it.time <= FRESH_LOCATION_MAX_AGE_MS }
+        .minByOrNull { it.accuracy }
+    if (freshCached != null) {
+        onResult(freshCached)
+        return
+    }
+
+    // 캐시가 전부 오래됐다 - 실제로 새 위치를 요청한다. 실내 등 GPS 수신이
+    // 느린 상황을 고려해 타임아웃을 두고, 그래도 못 받으면 그나마 있는
+    // (오래된) 캐시로 폴백한다 - 완전히 실패시키는 것보단 낫다.
+    val handler = Handler(Looper.getMainLooper())
+    var finished = false
+    val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            if (finished) return
+            finished = true
+            lm.removeUpdates(this)
+            handler.removeCallbacksAndMessages(null)
+            onResult(location)
+        }
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+    try {
+        for (provider in providers) {
+            try {
+                lm.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
+            } catch (_: Exception) {
+                // 일부 기기/제공자 조합에서 요청 자체가 거부될 수 있음 - 다른
+                // provider는 계속 시도한다.
+            }
+        }
+    } catch (_: SecurityException) {
+        onResult(null)
+        return
+    }
+    handler.postDelayed({
+        if (!finished) {
+            finished = true
+            lm.removeUpdates(listener)
+            onResult(cachedLocations().minByOrNull { it.accuracy })
+        }
+    }, FRESH_LOCATION_TIMEOUT_MS)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppRoot(
@@ -395,25 +471,22 @@ private fun AppRoot(
     var selectedProvider by remember { mutableStateOf("K_DATA") }
 
     // "행사 > 내 주변"(GPS 기반 locationBasedList2, 2026-10-09 추가) - 위치
-    // 권한이 이미 있으면 바로 마지막 위치를 읽어 "주변행사 위도@경도 " 명령을
-    // 채우고, 없으면 시스템 권한 요청 다이얼로그를 띄운 뒤 승인되면 이어서
-    // 같은 동작을 한다. Play Services 등 새 의존성 없이 프레임워크
-    // LocationManager.getLastKnownLocation만 쓴다(실시간 추적 불필요 -
-    // 이미 기기가 최근에 구해둔 위치로 충분).
+    // 권한이 이미 있으면 requestFreshLocation으로 위치를 구해 "주변행사
+    // 위도@경도 " 명령을 채우고, 없으면 시스템 권한 요청 다이얼로그를 띄운 뒤
+    // 승인되면 이어서 같은 동작을 한다. Play Services 등 새 의존성 없이
+    // 프레임워크 LocationManager만 쓴다(requestFreshLocation 주석 참고 -
+    // 2026-10-20부터 단순 getLastKnownLocation이 아니라 캐시 신선도를
+    // 확인하고 필요하면 새로 요청함).
     val context = LocalContext.current
     fun fillNearbyFestivalCommand() {
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val best = lm.getProviders(true)
-            .mapNotNull { provider ->
-                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+        requestFreshLocation(context) { best ->
+            if (best == null) {
+                val insert = "주변행사 "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
+            } else {
+                val insert = "주변행사 ${best.latitude}@${best.longitude} "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
             }
-            .minByOrNull { it.accuracy }
-        if (best == null) {
-            val insert = "주변행사 "
-            input = TextFieldValue(insert, selection = TextRange(insert.length))
-        } else {
-            val insert = "주변행사 ${best.latitude}@${best.longitude} "
-            input = TextFieldValue(insert, selection = TextRange(insert.length))
         }
     }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -437,24 +510,20 @@ private fun AppRoot(
     // 골라 그 이름들을 "|"로 이어붙여 "주유소 내주변 이름1|이름2|..."
     // 명령으로 채운다 - rest.sce가 이 5개를 순회하며 각각 가격을 조회한다.
     fun fillNearbyGasCommand() {
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val best = lm.getProviders(true)
-            .mapNotNull { provider ->
-                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+        requestFreshLocation(context) { best ->
+            if (best == null) {
+                val insert = "주유소 "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
+            } else {
+                val nearest = ExRestAreaStore.nearest(filesDir, best.latitude, best.longitude, limit = 5)
+                val insert = if (nearest.isEmpty()) {
+                    "주유소 "
+                } else {
+                    "주유소 내주변 " + nearest.joinToString("|") { it.name }
+                }
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
             }
-            .minByOrNull { it.accuracy }
-        if (best == null) {
-            val insert = "주유소 "
-            input = TextFieldValue(insert, selection = TextRange(insert.length))
-            return
         }
-        val nearest = ExRestAreaStore.nearest(filesDir, best.latitude, best.longitude, limit = 5)
-        val insert = if (nearest.isEmpty()) {
-            "주유소 "
-        } else {
-            "주유소 내주변 " + nearest.joinToString("|") { it.name }
-        }
-        input = TextFieldValue(insert, selection = TextRange(insert.length))
     }
     val locationPermissionLauncherGas = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -476,24 +545,20 @@ private fun AppRoot(
     // 접두어만 "메뉴 내주변"으로 다르다 - rest.sce의 EX메뉴근처 체인이
     // 각 이름당 대표메뉴 1건씩만 모아 보여준다.
     fun fillNearbyMenuCommand() {
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val best = lm.getProviders(true)
-            .mapNotNull { provider ->
-                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+        requestFreshLocation(context) { best ->
+            if (best == null) {
+                val insert = "메뉴 "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
+            } else {
+                val nearest = ExRestAreaStore.nearest(filesDir, best.latitude, best.longitude, limit = 5)
+                val insert = if (nearest.isEmpty()) {
+                    "메뉴 "
+                } else {
+                    "메뉴 내주변 " + nearest.joinToString("|") { it.name }
+                }
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
             }
-            .minByOrNull { it.accuracy }
-        if (best == null) {
-            val insert = "메뉴 "
-            input = TextFieldValue(insert, selection = TextRange(insert.length))
-            return
         }
-        val nearest = ExRestAreaStore.nearest(filesDir, best.latitude, best.longitude, limit = 5)
-        val insert = if (nearest.isEmpty()) {
-            "메뉴 "
-        } else {
-            "메뉴 내주변 " + nearest.joinToString("|") { it.name }
-        }
-        input = TextFieldValue(insert, selection = TextRange(insert.length))
     }
     val locationPermissionLauncherMenu = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -516,17 +581,13 @@ private fun AppRoot(
     // 실제 거리 계산을 위해 지오코딩+API 호출+정렬이 필요해(ParkingNearbyStore
     // 참고) 더 이상 "한 줄 채팅 명령"으로 표현할 수 없기 때문이다.
     fun fillNearbyParkingCommand() {
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val best = lm.getProviders(true)
-            .mapNotNull { provider ->
-                try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
+        requestFreshLocation(context) { best ->
+            if (best == null) {
+                val insert = "주차장 "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
+            } else {
+                onNearbyParkingResolved(best.latitude, best.longitude)
             }
-            .minByOrNull { it.accuracy }
-        if (best == null) {
-            val insert = "주차장 "
-            input = TextFieldValue(insert, selection = TextRange(insert.length))
-        } else {
-            onNearbyParkingResolved(best.latitude, best.longitude)
         }
     }
     val locationPermissionLauncherParking = rememberLauncherForActivityResult(
