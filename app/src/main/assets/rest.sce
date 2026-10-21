@@ -3461,14 +3461,6 @@ $$$세션.keco_watch_alert_text$$$}
   만약에(수신메시지.response.body.totalCount == 0)
     함수.저장(tour_reply_text,문장.TOUR행사없음문장)
     전송.TOUR응답전송
-  그외그외(수신메시지.response.body.totalCount == 1)
-    함수.저장(tour_title,수신메시지.response.body.items.item.title)
-    함수.저장(tour_addr,수신메시지.response.body.items.item.addr1)
-    함수.저장(tour_start,수신메시지.response.body.items.item.eventstartdate)
-    함수.저장(tour_end,수신메시지.response.body.items.item.eventenddate)
-    함수.저장(tour_summary_lines,문장.TOUR행사라인문장_단일)
-    함수.저장(tour_reply_text,문장.TOUR요약문장_단일)
-    전송.TOUR응답전송
   그외
     함수.객체저장(tour_items,수신메시지.response.body.items.item)
     함수.저장(tour_idx,0)
@@ -3485,6 +3477,34 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(tour_reply_text,문장.TOUR요약문장)
     전송.TOUR응답전송
   그외
+    함수.저장(tour_cur_title,세션.객체.tour_items[세션.tour_idx].title)
+    처리.TOUR필드확인_시작일
+}
+처리::TOUR.TOUR필드확인_시작일
+{
+  만약에(세션.객체.tour_items[세션.tour_idx].eventstartdate == NULL)
+    함수.저장(tour_cur_start,-)
+    처리.TOUR필드확인_종료일
+  그외
+    함수.저장(tour_cur_start,세션.객체.tour_items[세션.tour_idx].eventstartdate)
+    처리.TOUR필드확인_종료일
+}
+처리::TOUR.TOUR필드확인_종료일
+{
+  만약에(세션.객체.tour_items[세션.tour_idx].eventenddate == NULL)
+    함수.저장(tour_cur_end,-)
+    처리.TOUR필드확인_주소
+  그외
+    함수.저장(tour_cur_end,세션.객체.tour_items[세션.tour_idx].eventenddate)
+    처리.TOUR필드확인_주소
+}
+처리::TOUR.TOUR필드확인_주소
+{
+  만약에(세션.객체.tour_items[세션.tour_idx].addr1 == NULL)
+    함수.저장(tour_cur_addr,-)
+    처리.TOUR항목추가
+  그외
+    함수.저장(tour_cur_addr,세션.객체.tour_items[세션.tour_idx].addr1)
     처리.TOUR항목추가
 }
 처리::TOUR.TOUR항목추가
@@ -3584,13 +3604,9 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.text = 세션.tour_reply_text
 }
 문장::TOUR.TOUR행사라인문장
-{$$$세션.객체.tour_items[세션.tour_idx].title$$$ ($$$세션.객체.tour_items[세션.tour_idx].eventstartdate$$$~$$$세션.객체.tour_items[세션.tour_idx].eventenddate$$$) $$$세션.객체.tour_items[세션.tour_idx].addr1$$$}
-문장::TOUR.TOUR행사라인문장_단일
-{$$$세션.tour_title$$$ ($$$세션.tour_start$$$~$$$세션.tour_end$$$) $$$세션.tour_addr$$$}
+{$$$세션.tour_cur_title$$$ ($$$세션.tour_cur_start$$$~$$$세션.tour_cur_end$$$) $$$세션.tour_cur_addr$$$}
 문장::TOUR.TOUR요약문장
 {$$$세션.tour_region_name$$$ $$$세션.tour_year$$$년 $$$세션.tour_month$$$월 행사/공연/축제 (최근 $$$세션.tour_count$$$건): $$$세션.tour_summary_lines$$$}
-문장::TOUR.TOUR요약문장_단일
-{$$$세션.tour_region_name$$$ $$$세션.tour_year$$$년 $$$세션.tour_month$$$월 행사/공연/축제 (1건): $$$세션.tour_summary_lines$$$}
 문장::TOUR.TOUR행사없음문장
 {$$$세션.tour_region_name$$$ $$$세션.tour_year$$$년 $$$세션.tour_month$$$월에는 행사/공연/축제 내역이 없습니다.}
 문장::TELEGRAM.TOUR파싱실패문장
@@ -3629,13 +3645,6 @@ $$$세션.keco_watch_alert_text$$$}
   만약에(수신메시지.response.body.totalCount == 0)
     함수.저장(tour_reply_text,문장.TOUR주변없음문장)
     전송.TOUR응답전송
-  그외그외(수신메시지.response.body.totalCount == 1)
-    함수.저장(tour_title,수신메시지.response.body.items.item.title)
-    함수.저장(tour_addr,수신메시지.response.body.items.item.addr1)
-    함수.저장(tour_dist,수신메시지.response.body.items.item.dist)
-    함수.저장(tour_summary_lines,문장.TOUR주변라인문장_단일)
-    함수.저장(tour_reply_text,문장.TOUR주변요약문장_단일)
-    전송.TOUR응답전송
   그외
     함수.객체저장(tournear_items,수신메시지.response.body.items.item)
     함수.저장(tournear_idx,0)
@@ -3652,6 +3661,25 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(tour_reply_text,문장.TOUR주변요약문장)
     전송.TOUR응답전송
   그외
+    함수.저장(tournear_cur_title,세션.객체.tournear_items[세션.tournear_idx].title)
+    처리.TOUR주변필드확인_거리
+}
+처리::TOUR.TOUR주변필드확인_거리
+{
+  만약에(세션.객체.tournear_items[세션.tournear_idx].dist == NULL)
+    함수.저장(tournear_cur_dist,-)
+    처리.TOUR주변필드확인_주소
+  그외
+    함수.저장(tournear_cur_dist,세션.객체.tournear_items[세션.tournear_idx].dist)
+    처리.TOUR주변필드확인_주소
+}
+처리::TOUR.TOUR주변필드확인_주소
+{
+  만약에(세션.객체.tournear_items[세션.tournear_idx].addr1 == NULL)
+    함수.저장(tournear_cur_addr,-)
+    처리.TOUR주변항목추가
+  그외
+    함수.저장(tournear_cur_addr,세션.객체.tournear_items[세션.tournear_idx].addr1)
     처리.TOUR주변항목추가
 }
 처리::TOUR.TOUR주변항목추가
@@ -3687,7 +3715,7 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.주소.파라미터[6].key = pageNo
   전송메시지.주소.파라미터[6].val = 1
   전송메시지.주소.파라미터[7].key = contentTypeId
-  전송메시지.주소.파라미터[7].val = 85
+  전송메시지.주소.파라미터[7].val = 15
   전송메시지.주소.파라미터[8].key = mapX
   전송메시지.주소.파라미터[8].val = 세션.tour_lng
   전송메시지.주소.파라미터[9].key = mapY
@@ -3696,13 +3724,9 @@ $$$세션.keco_watch_alert_text$$$}
   전송메시지.주소.파라미터[10].val = 5000
 }
 문장::TOUR.TOUR주변라인문장
-{$$$세션.객체.tournear_items[세션.tournear_idx].title$$$ (약 $$$세션.객체.tournear_items[세션.tournear_idx].dist$$$m) $$$세션.객체.tournear_items[세션.tournear_idx].addr1$$$}
-문장::TOUR.TOUR주변라인문장_단일
-{$$$세션.tour_title$$$ (약 $$$세션.tour_dist$$$m) $$$세션.tour_addr$$$}
+{$$$세션.tournear_cur_title$$$ (약 $$$세션.tournear_cur_dist$$$m) $$$세션.tournear_cur_addr$$$}
 문장::TOUR.TOUR주변요약문장
 {내 주변 행사/공연/축제 (최근 $$$세션.tournear_count$$$건): $$$세션.tour_summary_lines$$$}
-문장::TOUR.TOUR주변요약문장_단일
-{내 주변 행사/공연/축제 (1건): $$$세션.tour_summary_lines$$$}
 문장::TOUR.TOUR주변없음문장
 {내 주변 5km 이내에는 행사/공연/축제 정보가 없습니다.}
 문장::TELEGRAM.TOUR주변위치없음문장

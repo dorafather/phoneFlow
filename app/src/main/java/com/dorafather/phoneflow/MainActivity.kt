@@ -171,6 +171,7 @@ class MainActivity : ComponentActivity() {
                         filesDir = filesDir,
                         onSend = ::sendChatInput,
                         onNearbyParkingResolved = ::handleNearbyParkingRequest,
+                        onNearbyParkingLocationFailed = ::handleNearbyParkingLocationFailed,
                         onParkingCheapestResolved = ::handleParkingCheapestRequest
                     )
                 }
@@ -245,6 +246,23 @@ class MainActivity : ComponentActivity() {
      * 뒤 결과를 봇 메시지로 바로 추가한다(전송 버튼을 누를 DSL 명령 자체가
      * 없으므로 - 계산된 최종 결과만 있을 뿐).
      */
+    /**
+     * requestFreshLocation()이 끝내 위치를 구하지 못했을 때(2026-10-20
+     * "회사에선 실패" 리포트 이후 추가) - 예전엔 입력창에 "주차장 "만
+     * 조용히 채워서 사용자가 "눌렀는데 아무 반응이 없다"고 느끼기 쉬웠다.
+     * 이제는 왜 안 됐는지와 대안을 바로 봇 메시지로 알려준다.
+     */
+    private fun handleNearbyParkingLocationFailed() {
+        appendMessage(ChatMessage(text = "주차장 내 주변", fromUser = true))
+        appendMessage(
+            ChatMessage(
+                text = "현재 위치를 확인하지 못했습니다(실내 등 GPS/네트워크 신호가 약하면 발생할 수 있어요). " +
+                    "잠시 후 다시 시도하시거나, 드로워 > 주차장 > 지역 선택에서 직접 검색해주세요.",
+                fromUser = false
+            )
+        )
+    }
+
     private fun handleNearbyParkingRequest(lat: Double, lon: Double) {
         appendMessage(ChatMessage(text = "주차장 내 주변", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
@@ -269,8 +287,20 @@ class MainActivity : ComponentActivity() {
             Log.e(TAG, "역지오코딩 실패", t)
             null
         } ?: return "현재 위치를 지역으로 변환하지 못했습니다. $fallbackGuide"
+        Log.i(
+            LOCATION_TAG,
+            "지오코딩 결과 - adminArea=${address.adminArea}, subAdminArea=${address.subAdminArea}, " +
+                "locality=${address.locality}, subLocality=${address.subLocality}, " +
+                "featureName=${address.featureName}, addressLine0=${address.getAddressLine(0)}"
+        )
 
-        val sigunguName = address.subAdminArea ?: address.locality
+        // 경기도 하남시처럼 "도 > 시/군 > 동" 구조인 지역은 subAdminArea에
+        // 시/군 이름이 들어오지만, 서울/부산 등 특별시·광역시(구 바로 아래가
+        // 동이라 중간 단계가 없음)는 subAdminArea/locality가 둘 다 비고
+        // 대신 subLocality에 구 이름이 들어온다(2026-10-21 실측 확인 -
+        // "서울특별시 강남구" 주소에서 subAdminArea=null, locality=null,
+        // subLocality=강남구였다). 세 필드를 순서대로 확인한다.
+        val sigunguName = address.subAdminArea ?: address.locality ?: address.subLocality
             ?: return "현재 위치의 시/군/구를 확인하지 못했습니다. $fallbackGuide"
         val sidoName = address.adminArea
 
@@ -385,19 +415,30 @@ private const val FRESH_LOCATION_MAX_AGE_MS = 3 * 60 * 1000L
 private const val FRESH_LOCATION_TIMEOUT_MS = 15_000L
 private const val FRESH_LOCATION_FALLBACK_MAX_AGE_MS = 10 * 60 * 1000L
 
+private const val LOCATION_TAG = "phoneFlow/Location"
+
 private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit) {
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     val providers = lm.getProviders(true)
+    Log.i(LOCATION_TAG, "요청 시작 - 사용 가능한 provider=$providers")
 
     fun cachedLocations(): List<Location> = providers.mapNotNull { provider ->
         try { lm.getLastKnownLocation(provider) } catch (_: SecurityException) { null }
     }
 
     val now = System.currentTimeMillis()
-    val freshCached = cachedLocations()
+    val candidates = cachedLocations()
+    Log.i(
+        LOCATION_TAG,
+        "캐시 확인 - " + candidates.joinToString(", ") {
+            "${it.provider}(age=${(now - it.time) / 1000}s, acc=${it.accuracy}m)"
+        }.ifEmpty { "(캐시 없음)" }
+    )
+    val freshCached = candidates
         .filter { now - it.time <= FRESH_LOCATION_MAX_AGE_MS }
         .minByOrNull { it.accuracy }
     if (freshCached != null) {
+        Log.i(LOCATION_TAG, "신선한 캐시 사용 - ${freshCached.provider}, age=${(now - freshCached.time) / 1000}s")
         onResult(freshCached)
         return
     }
@@ -406,6 +447,7 @@ private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit
     // 위치를 하나도 못 받으면, 그나마 있는 캐시 중 "그래도 너무 오래되진
     // 않은"(FRESH_LOCATION_FALLBACK_MAX_AGE_MS 이내) 것만 폴백으로 쓰고,
     // 그마저 없으면 null(실패)을 돌려준다.
+    Log.i(LOCATION_TAG, "캐시가 오래됨 - 새 위치 요청 시작(타임아웃 ${FRESH_LOCATION_TIMEOUT_MS}ms)")
     val handler = Handler(Looper.getMainLooper())
     var finished = false
     val listener = object : LocationListener {
@@ -414,23 +456,30 @@ private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit
             finished = true
             lm.removeUpdates(this)
             handler.removeCallbacksAndMessages(null)
+            Log.i(LOCATION_TAG, "새 위치 수신 - ${location.provider}, acc=${location.accuracy}m")
             onResult(location)
         }
         @Deprecated("Deprecated in Java")
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-        override fun onProviderEnabled(provider: String) {}
-        override fun onProviderDisabled(provider: String) {}
+        override fun onProviderEnabled(provider: String) {
+            Log.i(LOCATION_TAG, "provider 활성화됨 - $provider")
+        }
+        override fun onProviderDisabled(provider: String) {
+            Log.w(LOCATION_TAG, "provider 비활성화됨 - $provider")
+        }
     }
     try {
         for (provider in providers) {
             try {
                 lm.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
-            } catch (_: Exception) {
+            } catch (t: Exception) {
                 // 일부 기기/제공자 조합에서 요청 자체가 거부될 수 있음 - 다른
                 // provider는 계속 시도한다.
+                Log.w(LOCATION_TAG, "$provider 요청 거부됨: ${t.message}")
             }
         }
     } catch (_: SecurityException) {
+        Log.w(LOCATION_TAG, "위치 권한 없음(SecurityException)")
         onResult(null)
         return
     }
@@ -439,9 +488,21 @@ private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit
             finished = true
             lm.removeUpdates(listener)
             val timeoutNow = System.currentTimeMillis()
-            val fallback = cachedLocations()
+            val timeoutCandidates = cachedLocations()
+            Log.w(
+                LOCATION_TAG,
+                "타임아웃 - 폴백 후보: " + timeoutCandidates.joinToString(", ") {
+                    "${it.provider}(age=${(timeoutNow - it.time) / 1000}s)"
+                }.ifEmpty { "(없음)" }
+            )
+            val fallback = timeoutCandidates
                 .filter { timeoutNow - it.time <= FRESH_LOCATION_FALLBACK_MAX_AGE_MS }
                 .minByOrNull { it.accuracy }
+            if (fallback == null) {
+                Log.w(LOCATION_TAG, "폴백도 없음 - 실패(null) 반환")
+            } else {
+                Log.i(LOCATION_TAG, "폴백 사용 - ${fallback.provider}, age=${(timeoutNow - fallback.time) / 1000}s")
+            }
             onResult(fallback)
         }
     }, FRESH_LOCATION_TIMEOUT_MS)
@@ -454,6 +515,7 @@ private fun AppRoot(
     filesDir: File,
     onSend: (String) -> Unit,
     onNearbyParkingResolved: (Double, Double) -> Unit,
+    onNearbyParkingLocationFailed: () -> Unit,
     onParkingCheapestResolved: (String, String) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -592,8 +654,7 @@ private fun AppRoot(
     fun fillNearbyParkingCommand() {
         requestFreshLocation(context) { best ->
             if (best == null) {
-                val insert = "주차장 "
-                input = TextFieldValue(insert, selection = TextRange(insert.length))
+                onNearbyParkingLocationFailed()
             } else {
                 onNearbyParkingResolved(best.latitude, best.longitude)
             }
