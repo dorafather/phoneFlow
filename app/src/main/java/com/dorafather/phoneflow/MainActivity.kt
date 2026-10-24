@@ -92,14 +92,6 @@ import java.util.Locale
 
 private const val TAG = "phoneFlow/JNI"
 
-// LAWD_PICKER가 "실거래가 지역추가 "/"주차장 "처럼 보통은 고른 지역을 입력창에
-// 채우는 접두어로 쓰이지만, "주차장 저렴한 순"만은 다르다(2026-10-19) - 가격
-// 비교엔 정렬이 필요한데 이 DSL 엔진엔 정렬 함수가 없어(ParkingNearbyStore
-// 주석 참고) rest.sce로 보낼 수 있는 "한 줄 명령"이 아니기 때문이다. 이
-// prefix를 lawdPickerPrefix에 세팅해두면 LAWD_PICKER의 콜백이 입력창을
-// 채우는 대신 바로 onParkingCheapestResolved를 호출하도록 분기한다.
-private const val PARKING_CHEAPEST_MARKER = "__주차장가격순__"
-
 data class ChatMessage(val text: String, val fromUser: Boolean)
 
 private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER }
@@ -171,6 +163,8 @@ class MainActivity : ComponentActivity() {
                         filesDir = filesDir,
                         onSend = ::sendChatInput,
                         onNearbyParkingResolved = ::handleNearbyParkingRequest,
+                        onNearbyParkingFreeResolved = ::handleNearbyParkingFreeRequest,
+                        onNearbyParkingPaidResolved = ::handleNearbyParkingPaidRequest,
                         onNearbyParkingLocationFailed = ::handleNearbyParkingLocationFailed,
                         onParkingCheapestResolved = ::handleParkingCheapestRequest
                     )
@@ -252,8 +246,8 @@ class MainActivity : ComponentActivity() {
      * 조용히 채워서 사용자가 "눌렀는데 아무 반응이 없다"고 느끼기 쉬웠다.
      * 이제는 왜 안 됐는지와 대안을 바로 봇 메시지로 알려준다.
      */
-    private fun handleNearbyParkingLocationFailed() {
-        appendMessage(ChatMessage(text = "주차장 내 주변", fromUser = true))
+    private fun handleNearbyParkingLocationFailed(label: String) {
+        appendMessage(ChatMessage(text = label, fromUser = true))
         appendMessage(
             ChatMessage(
                 text = "현재 위치를 확인하지 못했습니다(실내 등 GPS/네트워크 신호가 약하면 발생할 수 있어요). " +
@@ -263,11 +257,51 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /**
+     * "주차장" 드로워의 내 주변/무료만/유료만/저렴한 순이 전부 공유하는
+     * GPS -> 지역코드 변환(2026-10-24, "전부 GPS 기준으로 바꿔달라" 요청으로
+     * 네 기능이 전부 이 함수를 쓰게 통일했다). 경기도 하남시처럼 "도 > 시/군 >
+     * 동" 구조인 지역은 subAdminArea에 시/군 이름이 들어오지만, 서울/부산 등
+     * 특별시·광역시(구 바로 아래가 동이라 중간 단계가 없음)는 subAdminArea/
+     * locality가 둘 다 비고 대신 subLocality에 구 이름이 들어온다(2026-10-21
+     * 실측 확인 - "서울특별시 강남구" 주소에서 subAdminArea=null, locality=
+     * null, subLocality=강남구였다). 동명 시군구가 전국에 여러 곳 있을 수
+     * 있어(중구 등) geocoder가 알려준 시/도 이름으로 교차 확인한다
+     * (LawdPickerScreen과 달리 사용자가 직접 고를 수 없는 자동 흐름이라
+     * 꼭 필요한 보정).
+     */
+    private fun resolveParkingRegion(lat: Double, lon: Double): LawdCodeStore.LawdMatch? {
+        val address = try {
+            @Suppress("DEPRECATION")
+            Geocoder(this, Locale.KOREA).getFromLocation(lat, lon, 1)?.firstOrNull()
+        } catch (t: Throwable) {
+            Log.e(TAG, "역지오코딩 실패", t)
+            null
+        } ?: return null
+        Log.i(
+            LOCATION_TAG,
+            "지오코딩 결과 - adminArea=${address.adminArea}, subAdminArea=${address.subAdminArea}, " +
+                "locality=${address.locality}, subLocality=${address.subLocality}, " +
+                "featureName=${address.featureName}, addressLine0=${address.getAddressLine(0)}"
+        )
+        val sigunguName = address.subAdminArea ?: address.locality ?: address.subLocality ?: return null
+        val sidoName = address.adminArea
+        val candidates = LawdCodeStore.search(filesDir, sigunguName, limit = 30)
+        return candidates.firstOrNull { sidoName != null && it.fullName.startsWith(sidoName) }
+            ?: candidates.firstOrNull()
+    }
+
+    private fun parkingRegionFailedText(): String =
+        "현재 위치를 지역으로 확인하지 못했습니다. 드로워 > 주차장 > 지역 선택에서 직접 검색해주세요."
+
+    private fun formatDistance(meters: Int): String =
+        if (meters >= 1000) String.format(Locale.KOREA, "%.1fkm", meters / 1000.0) else "${meters}m"
+
     private fun handleNearbyParkingRequest(lat: Double, lon: Double) {
         appendMessage(ChatMessage(text = "주차장 내 주변", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
             val resultText = try {
-                resolveNearbyParkingText(lat, lon)
+                resolveNearbyParkingText(lat, lon, feeFilter = null, label = "")
             } catch (t: Throwable) {
                 Log.e(TAG, "주차장 내 주변 조회 실패", t)
                 "내 주변 주차장을 조회하지 못했습니다: ${t.message}"
@@ -278,39 +312,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun resolveNearbyParkingText(lat: Double, lon: Double): String {
-        val fallbackGuide = "드로워 > 주차장 > 지역 선택에서 직접 검색해주세요."
-        val address = try {
-            @Suppress("DEPRECATION")
-            Geocoder(this, Locale.KOREA).getFromLocation(lat, lon, 1)?.firstOrNull()
-        } catch (t: Throwable) {
-            Log.e(TAG, "역지오코딩 실패", t)
-            null
-        } ?: return "현재 위치를 지역으로 변환하지 못했습니다. $fallbackGuide"
-        Log.i(
-            LOCATION_TAG,
-            "지오코딩 결과 - adminArea=${address.adminArea}, subAdminArea=${address.subAdminArea}, " +
-                "locality=${address.locality}, subLocality=${address.subLocality}, " +
-                "featureName=${address.featureName}, addressLine0=${address.getAddressLine(0)}"
-        )
+    /** "주차장 > 무료만 보기"(2026-10-24, GPS 기준으로 전환) - 거리순 + 무료만. */
+    private fun handleNearbyParkingFreeRequest(lat: Double, lon: Double) {
+        appendMessage(ChatMessage(text = "주차장 무료만 보기 (내 주변)", fromUser = true))
+        lifecycleScope.launch(Dispatchers.IO) {
+            val resultText = try {
+                resolveNearbyParkingText(lat, lon, feeFilter = 1, label = "무료 ")
+            } catch (t: Throwable) {
+                Log.e(TAG, "주차장 무료만 보기 조회 실패", t)
+                "내 주변 무료 주차장을 조회하지 못했습니다: ${t.message}"
+            }
+            withContext(Dispatchers.Main) {
+                appendMessage(ChatMessage(text = resultText, fromUser = false))
+            }
+        }
+    }
 
-        // 경기도 하남시처럼 "도 > 시/군 > 동" 구조인 지역은 subAdminArea에
-        // 시/군 이름이 들어오지만, 서울/부산 등 특별시·광역시(구 바로 아래가
-        // 동이라 중간 단계가 없음)는 subAdminArea/locality가 둘 다 비고
-        // 대신 subLocality에 구 이름이 들어온다(2026-10-21 실측 확인 -
-        // "서울특별시 강남구" 주소에서 subAdminArea=null, locality=null,
-        // subLocality=강남구였다). 세 필드를 순서대로 확인한다.
-        val sigunguName = address.subAdminArea ?: address.locality ?: address.subLocality
-            ?: return "현재 위치의 시/군/구를 확인하지 못했습니다. $fallbackGuide"
-        val sidoName = address.adminArea
+    /** "주차장 > 유료만 보기"(2026-10-24, GPS 기준으로 전환) - 거리순 + 유료만. */
+    private fun handleNearbyParkingPaidRequest(lat: Double, lon: Double) {
+        appendMessage(ChatMessage(text = "주차장 유료만 보기 (내 주변)", fromUser = true))
+        lifecycleScope.launch(Dispatchers.IO) {
+            val resultText = try {
+                resolveNearbyParkingText(lat, lon, feeFilter = 2, label = "유료 ")
+            } catch (t: Throwable) {
+                Log.e(TAG, "주차장 유료만 보기 조회 실패", t)
+                "내 주변 유료 주차장을 조회하지 못했습니다: ${t.message}"
+            }
+            withContext(Dispatchers.Main) {
+                appendMessage(ChatMessage(text = resultText, fromUser = false))
+            }
+        }
+    }
 
-        // 동명 시군구가 전국에 여러 곳 있을 수 있어(중구 등), geocoder가 알려준
-        // 시/도 이름으로 교차 확인한다(LawdPickerScreen과 달리 사용자가 직접
-        // 고를 수 없는 자동 흐름이라 꼭 필요한 보정).
-        val candidates = LawdCodeStore.search(filesDir, sigunguName, limit = 30)
-        val match = candidates.firstOrNull { sidoName != null && it.fullName.startsWith(sidoName) }
-            ?: candidates.firstOrNull()
-            ?: return "\"$sigunguName\" 지역코드를 찾지 못했습니다. $fallbackGuide"
+    /** feeFilter: null=전체, 1=무료만, 2=유료만. label은 "무료 "/"유료 "처럼 결과 문구 접두어. */
+    private fun resolveNearbyParkingText(lat: Double, lon: Double, feeFilter: Int?, label: String): String {
+        val match = resolveParkingRegion(lat, lon) ?: return parkingRegionFailedText()
 
         val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA")
             ?: return "K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요."
@@ -323,34 +359,31 @@ class MainActivity : ComponentActivity() {
             sidoCd = match.parentCode5.take(2),
             sigunguCd = match.parentCode5,
             userLat = lat,
-            userLon = lon
+            userLon = lon,
+            feeFilter = feeFilter
         )
         if (nearest.isEmpty()) {
-            return "${match.parentDisplayName} 지역에 위경도 정보가 있는 주차장을 찾지 못했습니다."
+            return "${match.parentDisplayName} 지역에 위경도 정보가 있는 ${label}주차장을 찾지 못했습니다."
         }
         val lines = nearest.joinToString("\n") { p ->
-            val distText = if (p.distanceMeters >= 1000) {
-                String.format(Locale.KOREA, "%.1fkm", p.distanceMeters / 1000.0)
-            } else {
-                "${p.distanceMeters}m"
-            }
-            "${p.name} (${p.addr}) $distText / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
+            "${p.name} (${p.addr}) ${formatDistance(p.distanceMeters)} / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
         }
-        return "${match.parentDisplayName} 내 주변 주차장 (가까운 순 ${nearest.size}곳):\n$lines"
+        return "${match.parentDisplayName} 내 주변 ${label}주차장 (가까운 순 ${nearest.size}곳):\n$lines"
     }
 
     /**
-     * "주차장 > 저렴한 순" 전용(2026-10-19) - 기본요금 비교엔 정렬이 필요하고
-     * 요금은 시설정보가 아니라 운영정보(PrkOprInfo_v1)에만 있어 두 오퍼레이션을
-     * prk_center_id로 조인해야 한다(ParkingNearbyStore.findCheapest 참고) -
-     * 내 주변과 같은 이유로 rest.sce를 거치지 않는다. 좌표가 아니라 이미
-     * LawdPickerScreen에서 고른 지역코드를 그대로 받는다는 점만 다르다.
+     * "주차장 > 저렴한 순"(2026-10-19 추가, 2026-10-24 GPS 기준으로 전환) -
+     * 기본요금 비교엔 정렬이 필요하고 요금은 시설정보가 아니라 운영정보
+     * (PrkOprInfo_v1)에만 있어 두 오퍼레이션을 prk_center_id로 조인해야
+     * 한다(ParkingNearbyStore.findCheapest 참고) - 내 주변과 같은 이유로
+     * rest.sce를 거치지 않는다. 지역 확인은 resolveParkingRegion으로
+     * 다른 세 기능과 동일하게 GPS에서 바로 얻는다.
      */
-    private fun handleParkingCheapestRequest(regionName: String, code5: String) {
-        appendMessage(ChatMessage(text = "주차장 저렴한 순 ($regionName)", fromUser = true))
+    private fun handleParkingCheapestRequest(lat: Double, lon: Double) {
+        appendMessage(ChatMessage(text = "주차장 저렴한 순 (내 주변)", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
             val resultText = try {
-                resolveParkingCheapestText(regionName, code5)
+                resolveParkingCheapestText(lat, lon)
             } catch (t: Throwable) {
                 Log.e(TAG, "주차장 저렴한 순 조회 실패", t)
                 "저렴한 순 주차장을 조회하지 못했습니다: ${t.message}"
@@ -361,7 +394,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun resolveParkingCheapestText(regionName: String, code5: String): String {
+    private fun resolveParkingCheapestText(lat: Double, lon: Double): String {
+        val match = resolveParkingRegion(lat, lon) ?: return parkingRegionFailedText()
+
         val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA")
             ?: return "K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요."
         val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["PARKING"]?.get("domain")
@@ -370,17 +405,17 @@ class MainActivity : ComponentActivity() {
         val cheapest = ParkingNearbyStore.findCheapest(
             domain = domain,
             serviceKey = serviceKey,
-            sidoCd = code5.take(2),
-            sigunguCd = code5
+            sidoCd = match.parentCode5.take(2),
+            sigunguCd = match.parentCode5
         )
         if (cheapest.isEmpty()) {
-            return "$regionName 지역에 요금 정보가 있는 주차장을 찾지 못했습니다."
+            return "${match.parentDisplayName} 지역에 요금 정보가 있는 주차장을 찾지 못했습니다."
         }
         val lines = cheapest.joinToString("\n") { p ->
             val feeText = if (p.baseChargeWon == 0) "무료" else "${p.baseChargeWon}원~"
             "${p.name} (${p.addr}) $feeText / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
         }
-        return "$regionName 주차장 요금 낮은 순 ${cheapest.size}곳:\n$lines"
+        return "${match.parentDisplayName} 내 주변 주차장 요금 낮은 순 ${cheapest.size}곳:\n$lines"
     }
 
     private fun extractDisplayText(json: JSONObject): String {
@@ -515,8 +550,10 @@ private fun AppRoot(
     filesDir: File,
     onSend: (String) -> Unit,
     onNearbyParkingResolved: (Double, Double) -> Unit,
-    onNearbyParkingLocationFailed: () -> Unit,
-    onParkingCheapestResolved: (String, String) -> Unit
+    onNearbyParkingFreeResolved: (Double, Double) -> Unit,
+    onNearbyParkingPaidResolved: (Double, Double) -> Unit,
+    onNearbyParkingLocationFailed: (String) -> Unit,
+    onParkingCheapestResolved: (Double, Double) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -646,19 +683,21 @@ private fun AppRoot(
         }
     }
 
-    // "주차장 > 내 주변"(2026-10-19 추가) - 좌표를 구하는 부분까지는 위
-    // 세 기능과 동일한 패턴이지만, 그 다음이 다르다: 입력창에 명령을 채우는
-    // 대신 좌표를 그대로 MainActivity(onNearbyParkingResolved)로 넘긴다 -
-    // 실제 거리 계산을 위해 지오코딩+API 호출+정렬이 필요해(ParkingNearbyStore
-    // 참고) 더 이상 "한 줄 채팅 명령"으로 표현할 수 없기 때문이다.
-    fun fillNearbyParkingCommand() {
+    // "주차장" 드로워의 내 주변/무료만/유료만/저렴한 순(2026-10-19 내 주변
+    // 추가, 2026-10-24 "전부 GPS 기준으로" 요청으로 나머지 셋도 동일 패턴으로
+    // 전환) - 좌표를 구하는 부분까지는 위 세 기능(행사/주유소/휴게소)과
+    // 동일하지만, 그 다음이 다르다: 입력창에 명령을 채우는 대신 좌표를
+    // 그대로 MainActivity로 넘긴다 - 실제 거리/가격 계산을 위해 지오코딩+
+    // API 호출+정렬이 필요해(ParkingNearbyStore 참고) 더 이상 "한 줄 채팅
+    // 명령"으로 표현할 수 없기 때문이다. 네 기능 모두 같은 모양이라
+    // "어떤 콜백을 부를지"만 다른 공통 함수로 묶었다.
+    fun handleParkingLocation(onResolved: (Double, Double) -> Unit, onFailed: () -> Unit) {
         requestFreshLocation(context) { best ->
-            if (best == null) {
-                onNearbyParkingLocationFailed()
-            } else {
-                onNearbyParkingResolved(best.latitude, best.longitude)
-            }
+            if (best == null) onFailed() else onResolved(best.latitude, best.longitude)
         }
+    }
+    fun fillNearbyParkingCommand() {
+        handleParkingLocation(onNearbyParkingResolved) { onNearbyParkingLocationFailed("주차장 내 주변") }
     }
     val locationPermissionLauncherParking = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -672,6 +711,60 @@ private fun AppRoot(
             fillNearbyParkingCommand()
         } else {
             locationPermissionLauncherParking.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    fun fillNearbyParkingFreeCommand() {
+        handleParkingLocation(onNearbyParkingFreeResolved) { onNearbyParkingLocationFailed("주차장 무료만 보기 (내 주변)") }
+    }
+    val locationPermissionLauncherParkingFree = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyParkingFreeCommand() }
+    fun requestNearbyParkingFree() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyParkingFreeCommand()
+        } else {
+            locationPermissionLauncherParkingFree.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    fun fillNearbyParkingPaidCommand() {
+        handleParkingLocation(onNearbyParkingPaidResolved) { onNearbyParkingLocationFailed("주차장 유료만 보기 (내 주변)") }
+    }
+    val locationPermissionLauncherParkingPaid = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyParkingPaidCommand() }
+    fun requestNearbyParkingPaid() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyParkingPaidCommand()
+        } else {
+            locationPermissionLauncherParkingPaid.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    fun fillParkingCheapestCommand() {
+        handleParkingLocation(onParkingCheapestResolved) { onNearbyParkingLocationFailed("주차장 저렴한 순 (내 주변)") }
+    }
+    val locationPermissionLauncherParkingCheapest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillParkingCheapestCommand() }
+    fun requestParkingCheapest() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillParkingCheapestCommand()
+        } else {
+            locationPermissionLauncherParkingCheapest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
 
@@ -742,6 +835,21 @@ private fun AppRoot(
                     },
                     onNearbyParkingRequested = {
                         requestNearbyParking()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyParkingFreeRequested = {
+                        requestNearbyParkingFree()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyParkingPaidRequested = {
+                        requestNearbyParkingPaid()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onParkingCheapestRequested = {
+                        requestParkingCheapest()
                         screen = Screen.CHAT
                         scope.launch { drawerState.close() }
                     }
@@ -822,15 +930,8 @@ private fun AppRoot(
                     Screen.PROVIDER_DETAIL -> ProviderSettingsScreen(filesDir = filesDir, section = selectedProvider)
                     Screen.SCENARIO -> ScenarioViewerScreen(filesDir = filesDir)
                     Screen.LAWD_PICKER -> LawdPickerScreen(filesDir = filesDir) { nameCodeToken ->
-                        if (lawdPickerPrefix == PARKING_CHEAPEST_MARKER) {
-                            val parts = nameCodeToken.split("@")
-                            if (parts.size == 2) {
-                                onParkingCheapestResolved(parts[0], parts[1])
-                            }
-                        } else {
-                            val insert = "$lawdPickerPrefix$nameCodeToken"
-                            input = TextFieldValue(insert, selection = TextRange(insert.length))
-                        }
+                        val insert = "$lawdPickerPrefix$nameCodeToken"
+                        input = TextFieldValue(insert, selection = TextRange(insert.length))
                         screen = Screen.CHAT
                     }
                     Screen.KMA_PICKER -> KmaPickerScreen(filesDir = filesDir) { nameNxNyToken ->
@@ -952,7 +1053,10 @@ private fun CommandDrawerContent(
     onExPickerRequested: (String) -> Unit,
     onNearbyGasRequested: () -> Unit,
     onNearbyMenuRequested: () -> Unit,
-    onNearbyParkingRequested: () -> Unit
+    onNearbyParkingRequested: () -> Unit,
+    onNearbyParkingFreeRequested: () -> Unit,
+    onNearbyParkingPaidRequested: () -> Unit,
+    onParkingCheapestRequested: () -> Unit
 ) {
     val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
@@ -1087,33 +1191,40 @@ private fun CommandDrawerContent(
                                         .clickableCompat { onLawdPickerRequested("주차장 ") }
                                 )
                             }
-                        } else if (group.label == "주차장" && (cmd.label == "무료만 보기" || cmd.label == "유료만 보기")) {
-                            // 유료/무료 필터는 지역코드 "이름@코드"만 다르게 접두어로
-                            // 붙이면 되는 보통의 LAWD_PICKER 용법 그대로다(DSL이
-                            // parkng_chrge_se로 직접 거를 수 있어 Kotlin 개입이 필요
-                            // 없음 - "저렴한 순"/"내 주변"과 달리 이 둘은 평범한
-                            // rest.sce 명령이다).
-                            val prefix = if (cmd.label == "무료만 보기") "주차장무료 " else "주차장유료 "
+                        } else if (group.label == "주차장" && cmd.label == "무료만 보기") {
+                            // 2026-10-24 "무료만/유료만/저렴한 순도 GPS 기준으로"
+                            // 요청으로 지역 피커 대신 "내 주변"과 같은 GPS 흐름으로
+                            // 전환 - 거리순 정렬에 무료 필터만 더한 것.
                             item(key = "item-${group.label}-${cmd.label}") {
                                 Text(
                                     cmd.label,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                                        .clickableCompat { onLawdPickerRequested(prefix) }
+                                        .clickableCompat { onNearbyParkingFreeRequested() }
+                                )
+                            }
+                        } else if (group.label == "주차장" && cmd.label == "유료만 보기") {
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onNearbyParkingPaidRequested() }
                                 )
                             }
                         } else if (group.label == "주차장" && cmd.label == "저렴한 순") {
                             // 기본요금 비교엔 정렬이 필요해(DSL엔 정렬 함수가 없음)
-                            // PARKING_CHEAPEST_MARKER로 LAWD_PICKER의 콜백을
-                            // onParkingCheapestResolved(Kotlin 직접 처리)로 분기한다.
+                            // "내 주변"과 동일한 GPS 흐름으로 onParkingCheapestRequested를
+                            // 바로 호출한다(2026-10-24 지역 피커 방식에서 전환).
                             item(key = "item-${group.label}-${cmd.label}") {
                                 Text(
                                     cmd.label,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                                        .clickableCompat { onLawdPickerRequested(PARKING_CHEAPEST_MARKER) }
+                                        .clickableCompat { onParkingCheapestRequested() }
                                 )
                             }
                         } else if (group.label == "주차장" && cmd.label == "내 주변") {

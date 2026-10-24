@@ -85,6 +85,9 @@ object ParkingNearbyStore {
     /**
      * sidoCd/sigunguCd 지역의 주차장을 넉넉히(fetchRows) 받아온 뒤, 위경도가
      * 있는 항목만 실제 거리를 계산해 가까운 순으로 limit개를 돌려준다.
+     * feeFilter: null=전체, 1=무료만, 2=유료만(parkng_chrge_se 값 그대로 -
+     * 2026-10-24 "무료만/유료만도 GPS 기준으로" 요청으로 추가. 이 필드는
+     * 이미 시설정보 자체에 있어 운영정보 조인 없이 바로 거를 수 있다).
      */
     fun findNearest(
         domain: String,
@@ -93,6 +96,7 @@ object ParkingNearbyStore {
         sigunguCd: String,
         userLat: Double,
         userLon: Double,
+        feeFilter: Int? = null,
         limit: Int = 5,
         fetchRows: Int = 100
     ): List<NearbyParking> {
@@ -101,6 +105,7 @@ object ParkingNearbyStore {
         val candidates = mutableListOf<NearbyParking>()
         for (i in 0 until items.length()) {
             val item = items.getJSONObject(i)
+            if (feeFilter != null && item.optString("parkng_chrge_se").toIntOrNull() != feeFilter) continue
             val lat = item.optString("prk_plce_entrc_la").toDoubleOrNull() ?: continue
             val lon = item.optString("prk_plce_entrc_lo").toDoubleOrNull() ?: continue
             candidates.add(
