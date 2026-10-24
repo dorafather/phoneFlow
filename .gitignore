@@ -25,6 +25,11 @@ app/.cxx/
 *.keystore
 keystore.properties
 
+# ---- Google Maps API 키 (app/build.gradle.kts가 keystore.properties와
+# 같은 방식으로 직접 읽음 - 커밋 금지, 없으면 더미값으로 빌드는 되지만
+# 실제 지도는 안 뜬다) ----
+secrets.properties
+
 # ---- 구 레이아웃(ndk-build 스타일, CMake 표준 레이아웃으로 이전 완료 -
 # app/src/main/cpp/에 동일 소스가 이미 있음. 로컬 참고용으로만 보존) ----
 /jni/

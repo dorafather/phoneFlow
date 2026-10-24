@@ -92,9 +92,13 @@ import java.util.Locale
 
 private const val TAG = "phoneFlow/JNI"
 
-data class ChatMessage(val text: String, val fromUser: Boolean)
+data class ChatMessage(val text: String, val fromUser: Boolean, val markers: List<MapPin>? = null)
 
-private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER }
+private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER, MAP }
+
+/** "내 주변" 응답 하나가 만드는 텍스트와 지도 핀을 함께 돌려주기 위한 결과 타입
+ *  (2026-10-25 "지도로 보기" 추가 - 주차장류 함수들이 String 대신 이걸 반환). */
+private data class NearbyResult(val text: String, val markers: List<MapPin>)
 
 /**
  * Jetpack Compose 기반 채팅 UI. 기존 JNI 초기화(FlowBridge.nativeInit/
@@ -110,6 +114,15 @@ private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICK
 class MainActivity : ComponentActivity() {
 
     private val messages = mutableStateListOf<ChatMessage>()
+
+    // "주유소/메뉴 > 내 주변"은 입력창을 채우기만 하고 전송은 사용자가 직접
+    // 눌러야 하는 패턴이라(행사와 동일, 주차장류와 다름) 좌표를 아는 시점
+    // (ExRestAreaStore 로컬 조회 직후)과 응답이 오는 시점 사이에 간격이
+    // 있다 - 그 사이 마커를 들고 있는 임시 저장소(2026-10-25 "지도로 보기"
+    // 추가). stashNearbyMarkers로 채워두고, 실제로 그 문구 그대로 전송됐을
+    // 때만(sendChatInput에서 텍스트 비교) 다음 봇 응답에 붙인다.
+    private var pendingNearbyMarkers: List<MapPin>? = null
+    private var pendingNearbyMarkersText: String? = null
 
     /** 모든 메시지 추가는 반드시 이 함수를 거친다 - 화면 상태(messages)와
      *  영구 저장(ChatHistoryStore)을 항상 같이 갱신하기 위함(2026-10-18
@@ -141,7 +154,10 @@ class MainActivity : ComponentActivity() {
             // 워커 스레드)에서 올 수 있으므로, Compose 상태 변경은 반드시
             // runOnUiThread로 메인 스레드에 올린다.
             runOnUiThread {
-                appendMessage(ChatMessage(text = extractDisplayText(json), fromUser = false))
+                val markers = extractMarkers(json) ?: pendingNearbyMarkers
+                pendingNearbyMarkers = null
+                pendingNearbyMarkersText = null
+                appendMessage(ChatMessage(text = extractDisplayText(json), fromUser = false, markers = markers))
             }
         }
 
@@ -166,7 +182,8 @@ class MainActivity : ComponentActivity() {
                         onNearbyParkingFreeResolved = ::handleNearbyParkingFreeRequest,
                         onNearbyParkingPaidResolved = ::handleNearbyParkingPaidRequest,
                         onNearbyParkingLocationFailed = ::handleNearbyParkingLocationFailed,
-                        onParkingCheapestResolved = ::handleParkingCheapestRequest
+                        onParkingCheapestResolved = ::handleParkingCheapestRequest,
+                        onNearbyMarkersComputed = ::stashNearbyMarkers
                     )
                 }
             }
@@ -223,11 +240,23 @@ class MainActivity : ComponentActivity() {
 
     private fun sendChatInput(text: String) {
         appendMessage(ChatMessage(text = text, fromUser = true))
+        // 보류 중인 마커가 이번에 보내는 문구와 다른 명령이면(사용자가 채워진
+        // 텍스트를 편집했거나 다른 명령을 입력함) 버린다 - 엉뚱한 응답에
+        // 마커가 잘못 붙는 걸 막기 위함.
+        if (text != pendingNearbyMarkersText) {
+            pendingNearbyMarkers = null
+            pendingNearbyMarkersText = null
+        }
         val event = JSONObject().apply {
             put("이벤트명", "채팅입력")
             put("text", text)
         }
         FlowBridge.nativePushEvent(event.toString())
+    }
+
+    private fun stashNearbyMarkers(commandText: String, markers: List<MapPin>) {
+        pendingNearbyMarkersText = commandText
+        pendingNearbyMarkers = markers
     }
 
     /**
@@ -300,14 +329,14 @@ class MainActivity : ComponentActivity() {
     private fun handleNearbyParkingRequest(lat: Double, lon: Double) {
         appendMessage(ChatMessage(text = "주차장 내 주변", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
-            val resultText = try {
+            val result = try {
                 resolveNearbyParkingText(lat, lon, feeFilter = null, label = "")
             } catch (t: Throwable) {
                 Log.e(TAG, "주차장 내 주변 조회 실패", t)
-                "내 주변 주차장을 조회하지 못했습니다: ${t.message}"
+                NearbyResult("내 주변 주차장을 조회하지 못했습니다: ${t.message}", emptyList())
             }
             withContext(Dispatchers.Main) {
-                appendMessage(ChatMessage(text = resultText, fromUser = false))
+                appendMessage(ChatMessage(text = result.text, fromUser = false, markers = result.markers.ifEmpty { null }))
             }
         }
     }
@@ -316,14 +345,14 @@ class MainActivity : ComponentActivity() {
     private fun handleNearbyParkingFreeRequest(lat: Double, lon: Double) {
         appendMessage(ChatMessage(text = "주차장 무료만 보기 (내 주변)", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
-            val resultText = try {
+            val result = try {
                 resolveNearbyParkingText(lat, lon, feeFilter = 1, label = "무료 ")
             } catch (t: Throwable) {
                 Log.e(TAG, "주차장 무료만 보기 조회 실패", t)
-                "내 주변 무료 주차장을 조회하지 못했습니다: ${t.message}"
+                NearbyResult("내 주변 무료 주차장을 조회하지 못했습니다: ${t.message}", emptyList())
             }
             withContext(Dispatchers.Main) {
-                appendMessage(ChatMessage(text = resultText, fromUser = false))
+                appendMessage(ChatMessage(text = result.text, fromUser = false, markers = result.markers.ifEmpty { null }))
             }
         }
     }
@@ -332,24 +361,24 @@ class MainActivity : ComponentActivity() {
     private fun handleNearbyParkingPaidRequest(lat: Double, lon: Double) {
         appendMessage(ChatMessage(text = "주차장 유료만 보기 (내 주변)", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
-            val resultText = try {
+            val result = try {
                 resolveNearbyParkingText(lat, lon, feeFilter = 2, label = "유료 ")
             } catch (t: Throwable) {
                 Log.e(TAG, "주차장 유료만 보기 조회 실패", t)
-                "내 주변 유료 주차장을 조회하지 못했습니다: ${t.message}"
+                NearbyResult("내 주변 유료 주차장을 조회하지 못했습니다: ${t.message}", emptyList())
             }
             withContext(Dispatchers.Main) {
-                appendMessage(ChatMessage(text = resultText, fromUser = false))
+                appendMessage(ChatMessage(text = result.text, fromUser = false, markers = result.markers.ifEmpty { null }))
             }
         }
     }
 
     /** feeFilter: null=전체, 1=무료만, 2=유료만. label은 "무료 "/"유료 "처럼 결과 문구 접두어. */
-    private fun resolveNearbyParkingText(lat: Double, lon: Double, feeFilter: Int?, label: String): String {
-        val match = resolveParkingRegion(lat, lon) ?: return parkingRegionFailedText()
+    private fun resolveNearbyParkingText(lat: Double, lon: Double, feeFilter: Int?, label: String): NearbyResult {
+        val match = resolveParkingRegion(lat, lon) ?: return NearbyResult(parkingRegionFailedText(), emptyList())
 
         val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA")
-            ?: return "K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요."
+            ?: return NearbyResult("K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요.", emptyList())
         val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["PARKING"]?.get("domain")
             ?: "https://apis.data.go.kr/B553881/Parking_v1"
 
@@ -363,12 +392,15 @@ class MainActivity : ComponentActivity() {
             feeFilter = feeFilter
         )
         if (nearest.isEmpty()) {
-            return "${match.parentDisplayName} 지역에 위경도 정보가 있는 ${label}주차장을 찾지 못했습니다."
+            return NearbyResult("${match.parentDisplayName} 지역에 위경도 정보가 있는 ${label}주차장을 찾지 못했습니다.", emptyList())
         }
         val lines = nearest.joinToString("\n") { p ->
             "${p.name} (${p.addr}) ${formatDistance(p.distanceMeters)} / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
         }
-        return "${match.parentDisplayName} 내 주변 ${label}주차장 (가까운 순 ${nearest.size}곳):\n$lines"
+        val markers = nearest.map { p ->
+            MapPin(name = p.name, lat = p.lat, lon = p.lon, subtitle = "${formatDistance(p.distanceMeters)} / ${p.feeName}")
+        }
+        return NearbyResult("${match.parentDisplayName} 내 주변 ${label}주차장 (가까운 순 ${nearest.size}곳):\n$lines", markers)
     }
 
     /**
@@ -382,23 +414,23 @@ class MainActivity : ComponentActivity() {
     private fun handleParkingCheapestRequest(lat: Double, lon: Double) {
         appendMessage(ChatMessage(text = "주차장 저렴한 순 (내 주변)", fromUser = true))
         lifecycleScope.launch(Dispatchers.IO) {
-            val resultText = try {
+            val result = try {
                 resolveParkingCheapestText(lat, lon)
             } catch (t: Throwable) {
                 Log.e(TAG, "주차장 저렴한 순 조회 실패", t)
-                "저렴한 순 주차장을 조회하지 못했습니다: ${t.message}"
+                NearbyResult("저렴한 순 주차장을 조회하지 못했습니다: ${t.message}", emptyList())
             }
             withContext(Dispatchers.Main) {
-                appendMessage(ChatMessage(text = resultText, fromUser = false))
+                appendMessage(ChatMessage(text = result.text, fromUser = false, markers = result.markers.ifEmpty { null }))
             }
         }
     }
 
-    private fun resolveParkingCheapestText(lat: Double, lon: Double): String {
-        val match = resolveParkingRegion(lat, lon) ?: return parkingRegionFailedText()
+    private fun resolveParkingCheapestText(lat: Double, lon: Double): NearbyResult {
+        val match = resolveParkingRegion(lat, lon) ?: return NearbyResult(parkingRegionFailedText(), emptyList())
 
         val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA")
-            ?: return "K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요."
+            ?: return NearbyResult("K_DATA 인증키가 설정되어 있지 않습니다. 설정 화면에서 먼저 키를 입력해주세요.", emptyList())
         val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["PARKING"]?.get("domain")
             ?: "https://apis.data.go.kr/B553881/Parking_v1"
 
@@ -409,13 +441,22 @@ class MainActivity : ComponentActivity() {
             sigunguCd = match.parentCode5
         )
         if (cheapest.isEmpty()) {
-            return "${match.parentDisplayName} 지역에 요금 정보가 있는 주차장을 찾지 못했습니다."
+            return NearbyResult("${match.parentDisplayName} 지역에 요금 정보가 있는 주차장을 찾지 못했습니다.", emptyList())
         }
         val lines = cheapest.joinToString("\n") { p ->
             val feeText = if (p.baseChargeWon == 0) "무료" else "${p.baseChargeWon}원~"
             "${p.name} (${p.addr}) $feeText / ${p.spaceCount}면 / ${p.feeName} / ${p.agentName}"
         }
-        return "${match.parentDisplayName} 내 주변 주차장 요금 낮은 순 ${cheapest.size}곳:\n$lines"
+        // PrkOprInfo_v1(요금)엔 좌표가 없어 PrkSttusInfo_v1(시설정보)쪽 좌표가
+        // 빠진 항목은 목록엔 남기되 핀에서만 제외한다(ParkingNearbyStore의
+        // CheapestParking.lat/lon이 nullable인 이유).
+        val markers = cheapest.mapNotNull { p ->
+            val pLat = p.lat ?: return@mapNotNull null
+            val pLon = p.lon ?: return@mapNotNull null
+            val feeText = if (p.baseChargeWon == 0) "무료" else "${p.baseChargeWon}원~"
+            MapPin(name = p.name, lat = pLat, lon = pLon, subtitle = feeText)
+        }
+        return NearbyResult("${match.parentDisplayName} 내 주변 주차장 요금 낮은 순 ${cheapest.size}곳:\n$lines", markers)
     }
 
     private fun extractDisplayText(json: JSONObject): String {
@@ -428,6 +469,27 @@ class MainActivity : ComponentActivity() {
         // 렌더링함) - rest.sce/엔진 쪽은 전혀 안 건드림.
         if (json.has("text")) return json.optString("text").replace("|", "\n")
         return json.toString()
+    }
+
+    /**
+     * 행사 "내 주변"만 markers 필드를 들고 온다(2026-10-25 "지도로 보기"
+     * 추가) - rest.sce엔 JSON 배열을 직접 조립할 수단이 없어, text 필드의
+     * "|" 구분 관례를 그대로 재사용해 "이름^위도^경도"를 "|"로 이어붙인
+     * 문자열로 보낸다. 값이 없거나(다른 TOUR 명령) "없음"(매 명령 시작 시
+     * 초기화값, rest.sce 참고)이면 null - 주유소/메뉴/주차장은 이 필드를
+     * 안 쓰고 각자 다른 경로(pendingNearbyMarkers/직접 전달)로 마커를 받는다.
+     */
+    private fun extractMarkers(json: JSONObject): List<MapPin>? {
+        val raw = json.optString("markers")
+        if (raw.isBlank() || raw == "없음") return null
+        val pins = raw.split("|").mapNotNull { line ->
+            val parts = line.split("^")
+            if (parts.size != 3) return@mapNotNull null
+            val lat = parts[1].toDoubleOrNull() ?: return@mapNotNull null
+            val lon = parts[2].toDoubleOrNull() ?: return@mapNotNull null
+            MapPin(name = parts[0], lat = lat, lon = lon)
+        }
+        return pins.ifEmpty { null }
     }
 }
 
@@ -553,7 +615,8 @@ private fun AppRoot(
     onNearbyParkingFreeResolved: (Double, Double) -> Unit,
     onNearbyParkingPaidResolved: (Double, Double) -> Unit,
     onNearbyParkingLocationFailed: (String) -> Unit,
-    onParkingCheapestResolved: (Double, Double) -> Unit
+    onParkingCheapestResolved: (Double, Double) -> Unit,
+    onNearbyMarkersComputed: (String, List<MapPin>) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -577,6 +640,9 @@ private fun AppRoot(
     // 설정 화면에서 어느 공급자 카드를 눌렀는지만 기억해둔다(2026-10-12
     // "공급자별 인증키" 설계 - EGEN_PICKER의 prefix 패턴과 동일한 원리).
     var selectedProvider by remember { mutableStateOf("K_DATA") }
+    // Screen.MAP 하나를 모든 "내 주변" 응답의 "지도로 보기"가 같이 쓴다
+    // (2026-10-25 추가) - 어느 메시지의 "지도로 보기"를 눌렀는지만 여기 담아둔다.
+    var mapScreenPins by remember { mutableStateOf<List<MapPin>>(emptyList()) }
 
     // "행사 > 내 주변"(GPS 기반 locationBasedList2, 2026-10-09 추가) - 위치
     // 권한이 이미 있으면 requestFreshLocation으로 위치를 구해 "주변행사
@@ -630,6 +696,9 @@ private fun AppRoot(
                     "주유소 내주변 " + nearest.joinToString("|") { it.name }
                 }
                 input = TextFieldValue(insert, selection = TextRange(insert.length))
+                if (nearest.isNotEmpty()) {
+                    onNearbyMarkersComputed(insert, nearest.map { MapPin(name = it.name, lat = it.lat, lon = it.lon) })
+                }
             }
         }
     }
@@ -665,6 +734,9 @@ private fun AppRoot(
                     "메뉴 내주변 " + nearest.joinToString("|") { it.name }
                 }
                 input = TextFieldValue(insert, selection = TextRange(insert.length))
+                if (nearest.isNotEmpty()) {
+                    onNearbyMarkersComputed(insert, nearest.map { MapPin(name = it.name, lat = it.lat, lon = it.lon) })
+                }
             }
         }
     }
@@ -883,6 +955,7 @@ private fun AppRoot(
                                     Screen.HIRA_PICKER -> "지역 검색"
                                     Screen.EGEN_PICKER -> "지역 검색"
                                     Screen.EX_PICKER -> "휴게소 검색"
+                                    Screen.MAP -> "지도로 보기"
                                     Screen.CHAT -> "PhoneFlow"
                                 }
                             )
@@ -921,8 +994,13 @@ private fun AppRoot(
                         onSend = { text ->
                             onSend(text)
                             input = TextFieldValue("")
+                        },
+                        onShowMap = { pins ->
+                            mapScreenPins = pins
+                            screen = Screen.MAP
                         }
                     )
+                    Screen.MAP -> NearbyMapScreen(pins = mapScreenPins)
                     Screen.SETTINGS -> SettingsScreen(filesDir = filesDir) { section ->
                         selectedProvider = section
                         screen = Screen.PROVIDER_DETAIL
@@ -1489,7 +1567,8 @@ private fun ChatScreen(
     messages: List<ChatMessage>,
     input: TextFieldValue,
     onInputChange: (TextFieldValue) -> Unit,
-    onSend: (String) -> Unit
+    onSend: (String) -> Unit,
+    onShowMap: (List<MapPin>) -> Unit
 ) {
     val listState = rememberLazyListState()
 
@@ -1552,43 +1631,61 @@ private fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(messages) { msg ->
-                ChatBubble(msg)
+                ChatBubble(msg, onShowMap)
             }
         }
     }
 }
 
 @Composable
-private fun ChatBubble(msg: ChatMessage) {
+private fun ChatBubble(msg: ChatMessage, onShowMap: (List<MapPin>) -> Unit) {
     val alignment = if (msg.fromUser) Alignment.CenterEnd else Alignment.CenterStart
     Box(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.align(alignment),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            if (!msg.fromUser) {
-                Image(
-                    painter = painterResource(id = R.drawable.zebra_face),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(bottom = 4.dp)
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(PhoneFlowBlueLight)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
+        Column(modifier = Modifier.align(alignment)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                if (!msg.fromUser) {
+                    Image(
+                        painter = painterResource(id = R.drawable.zebra_face),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(bottom = 4.dp)
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(PhoneFlowBlueLight)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Surface(
+                    modifier = Modifier.padding(4.dp),
+                    color = if (msg.fromUser) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text(
+                        text = msg.text,
+                        color = if (msg.fromUser) Color.White else MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
             }
-            Surface(
-                modifier = Modifier.padding(4.dp),
-                color = if (msg.fromUser) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.secondaryContainer,
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Text(
-                    text = msg.text,
-                    color = if (msg.fromUser) Color.White else MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                )
+            // "내 주변" 응답(행사/주유소/메뉴/주차장)에만 붙는 버튼(2026-10-25
+            // 추가) - msg.markers가 비어있지 않을 때만 보인다. 34dp는
+            // 아바타(26dp)+간격(4dp)+여백 정도로 버블 시작 위치에 맞춘 값.
+            if (!msg.markers.isNullOrEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .padding(start = 34.dp, bottom = 4.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { onShowMap(msg.markers) },
+                    color = PhoneFlowBlueLight,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        "📍 지도로 보기",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }

@@ -40,7 +40,9 @@ object ParkingNearbyStore {
         val spaceCount: String,
         val feeName: String,
         val agentName: String,
-        val distanceMeters: Int
+        val distanceMeters: Int,
+        val lat: Double,
+        val lon: Double
     )
 
     data class CheapestParking(
@@ -49,7 +51,13 @@ object ParkingNearbyStore {
         val spaceCount: String,
         val feeName: String,
         val agentName: String,
-        val baseChargeWon: Int
+        val baseChargeWon: Int,
+        // 가격 순위 계산 자체는 위경도가 필요 없어(PrkOprInfo_v1엔 좌표가
+        // 없음) findCheapest의 조인 대상에서 제외하진 않되, "지도로 보기"
+        // 핀을 찍을 수 있는 항목만 쓸 수 있게 nullable로 둔다(2026-10-25
+        // 지도 기능 추가 - 좌표 없는 항목은 목록엔 남고 지도에만 빠짐).
+        val lat: Double?,
+        val lon: Double?
     )
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -115,7 +123,9 @@ object ParkingNearbyStore {
                     spaceCount = item.optString("prk_cmprt_co"),
                     feeName = item.optString("parkng_chrge_se_nm"),
                     agentName = item.optString("prk_manage_agent_nm"),
-                    distanceMeters = haversineMeters(userLat, userLon, lat, lon).toInt()
+                    distanceMeters = haversineMeters(userLat, userLon, lat, lon).toInt(),
+                    lat = lat,
+                    lon = lon
                 )
             )
         }
@@ -170,7 +180,9 @@ object ParkingNearbyStore {
                     spaceCount = item.optString("prk_cmprt_co"),
                     feeName = item.optString("parkng_chrge_se_nm"),
                     agentName = item.optString("prk_manage_agent_nm"),
-                    baseChargeWon = price
+                    baseChargeWon = price,
+                    lat = item.optString("prk_plce_entrc_la").toDoubleOrNull(),
+                    lon = item.optString("prk_plce_entrc_lo").toDoubleOrNull()
                 )
             )
         }

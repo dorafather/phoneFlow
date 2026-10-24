@@ -3260,6 +3260,7 @@ $$$세션.keco_watch_alert_text$$$}
 {
   만약에(참)
     함수.저장(tour_mode,행사)
+    함수.저장(tour_marker_lines,없음)
     함수.단어분리(tour_cmd_word_list,세션.chat_input_text)
     함수.단어합치기(cmd_rest,세션.리스트.tour_cmd_word_list,1)
     처리.TOUR명령파싱
@@ -3604,6 +3605,7 @@ $$$세션.keco_watch_alert_text$$$}
 {
   전송메시지.이벤트명 = 봇응답
   전송메시지.text = 세션.tour_reply_text
+  전송메시지.markers = 세션.tour_marker_lines
 }
 문장::TOUR.TOUR행사라인문장
 {$$$세션.tour_cur_title$$$ ($$$세션.tour_cur_start$$$~$$$세션.tour_cur_end$$$) $$$세션.tour_cur_addr$$$}
@@ -3619,6 +3621,7 @@ $$$세션.keco_watch_alert_text$$$}
 {
   만약에(참)
     함수.저장(tour_mode,주변)
+    함수.저장(tour_marker_lines,없음)
     함수.단어분리(tournear_cmd_word_list,세션.chat_input_text)
     함수.단어합치기(cmd_rest,세션.리스트.tournear_cmd_word_list,1)
     처리.TOUR주변명령파싱
@@ -3679,20 +3682,40 @@ $$$세션.keco_watch_alert_text$$$}
 {
   만약에(세션.객체.tournear_items[세션.tournear_idx].addr1 == NULL)
     함수.저장(tournear_cur_addr,-)
-    처리.TOUR주변항목추가
+    처리.TOUR주변필드확인_위도
   그외
     함수.저장(tournear_cur_addr,세션.객체.tournear_items[세션.tournear_idx].addr1)
+    처리.TOUR주변필드확인_위도
+}
+처리::TOUR.TOUR주변필드확인_위도
+{
+  만약에(세션.객체.tournear_items[세션.tournear_idx].mapy == NULL)
+    함수.저장(tournear_cur_lat,0)
+    처리.TOUR주변필드확인_경도
+  그외
+    함수.저장(tournear_cur_lat,세션.객체.tournear_items[세션.tournear_idx].mapy)
+    처리.TOUR주변필드확인_경도
+}
+처리::TOUR.TOUR주변필드확인_경도
+{
+  만약에(세션.객체.tournear_items[세션.tournear_idx].mapx == NULL)
+    함수.저장(tournear_cur_lon,0)
+    처리.TOUR주변항목추가
+  그외
+    함수.저장(tournear_cur_lon,세션.객체.tournear_items[세션.tournear_idx].mapx)
     처리.TOUR주변항목추가
 }
 처리::TOUR.TOUR주변항목추가
 {
   만약에(세션.tournear_count == 0)
     함수.저장(tour_summary_lines,문장.TOUR주변라인문장)
+    함수.저장(tour_marker_lines,문장.TOUR주변마커문장)
     함수.더하기(tournear_count,세션.tournear_count,1)
     함수.더하기(tournear_idx,세션.tournear_idx,1)
     처리.TOUR주변항목순회
   그외
     함수.붙이기(tour_summary_lines,|,문장.TOUR주변라인문장)
+    함수.붙이기(tour_marker_lines,|,문장.TOUR주변마커문장)
     함수.더하기(tournear_count,세션.tournear_count,1)
     함수.더하기(tournear_idx,세션.tournear_idx,1)
     처리.TOUR주변항목순회
@@ -3727,6 +3750,8 @@ $$$세션.keco_watch_alert_text$$$}
 }
 문장::TOUR.TOUR주변라인문장
 {$$$세션.tournear_cur_title$$$ (약 $$$세션.tournear_cur_dist$$$m) $$$세션.tournear_cur_addr$$$}
+문장::TOUR.TOUR주변마커문장
+{$$$세션.tournear_cur_title$$$^$$$세션.tournear_cur_lat$$$^$$$세션.tournear_cur_lon$$$}
 문장::TOUR.TOUR주변요약문장
 {내 주변 행사/공연/축제 (최근 $$$세션.tournear_count$$$건): $$$세션.tour_summary_lines$$$}
 문장::TOUR.TOUR주변없음문장

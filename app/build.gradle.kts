@@ -17,6 +17,20 @@ val keystoreProps = Properties().apply {
     }
 }
 
+// Google Maps API 키(저장소 루트 secrets.properties, 커밋 안 함)도 같은
+// 원칙 - 키스토어 패턴과 동일하게 직접 Properties로 읽는다(2026-10-25
+// Secrets Gradle Plugin을 먼저 써봤는데 이 프로젝트 환경에서 매니페스트
+// placeholder 주입이 조용히 실패해 - 플러그인 태스크 자체가 등록되지
+// 않음, 원인 미상 - 더 단순하고 이미 검증된 이 방식으로 교체함). 파일이
+// 없으면 더미값으로 빌드는 되지만 실제 지도는 안 뜬다.
+val secretsPropsFile = rootProject.file("secrets.properties")
+val secretsProps = Properties().apply {
+    if (secretsPropsFile.exists()) {
+        secretsPropsFile.inputStream().use { load(it) }
+    }
+}
+val mapsApiKey = secretsProps.getProperty("MAPS_API_KEY") ?: "DEFAULT_API_KEY"
+
 android {
     namespace = "com.dorafather.phoneflow"
     compileSdk = 34
@@ -34,6 +48,8 @@ android {
         ndk {
             abiFilters += "arm64-v8a"
         }
+
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     externalNativeBuild {
@@ -95,4 +111,9 @@ dependencies {
     // 명령어 서랍(☰)의 메뉴 아이콘 - material3는 아이콘을 자체 포함하지
     // 않고 이 별도 아티팩트(core 아이콘셋)에 기대야 한다.
     implementation("androidx.compose.material:material-icons-core")
+    // "내 주변" 결과 "지도로 보기"(2026-10-25 추가) - compose-bom 2024.06.00과
+    // 짝이 맞는 버전으로 고정(maps-compose 6.1.2 pom이 동일 BOM을 import함,
+    // 최신 9.x는 Kotlin 2.x/훨씬 최신 compose-bom 전제라 이 프로젝트의
+    // Kotlin 1.9.24/Compose Compiler 1.5.14와 안 맞음).
+    implementation("com.google.maps.android:maps-compose:6.1.2")
 }
