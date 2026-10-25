@@ -12,9 +12,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,6 +69,7 @@ private fun hueToSwatchColor(hue: Float): Color {
     return Color(argb)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapBrowserScreen(
     onFetchFestival: suspend (Double, Double) -> List<MapPin>,
@@ -87,6 +92,9 @@ fun MapBrowserScreen(
     val checked = remember { mutableStateMapOf<MapCategory, Boolean>() }
     val cache = remember { mutableStateMapOf<MapCategory, List<MapPin>>() }
     val loading = remember { mutableStateMapOf<MapCategory, Boolean>() }
+    // 핀(마커) 클릭 상세내역 바텀시트(2026-10-25 추가) - 기본 InfoWindow
+    // 대신 화면 하단에서 여러 줄 상세정보를 보여준다.
+    var selectedPin by remember { mutableStateOf<CategoryMapPin?>(null) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -172,7 +180,11 @@ fun MapBrowserScreen(
             val visiblePins = MapCategory.values()
                 .filter { checked[it] == true }
                 .flatMap { category -> (cache[category] ?: emptyList()).map { CategoryMapPin(it, category) } }
-            CategoryMapView(pins = visiblePins, hasLocationPermission = hasLocationPermission)
+            CategoryMapView(
+                pins = visiblePins,
+                hasLocationPermission = hasLocationPermission,
+                onMarkerClick = { selectedPin = it }
+            )
             if (loading.values.any { it }) {
                 Surface(
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
@@ -194,10 +206,41 @@ fun MapBrowserScreen(
             }
         }
     }
+
+    val detailPin = selectedPin
+    if (detailPin != null) {
+        ModalBottomSheet(onDismissRequest = { selectedPin = null }) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(12.dp),
+                        color = hueToSwatchColor(detailPin.category.hue),
+                        shape = androidx.compose.foundation.shape.CircleShape
+                    ) {}
+                    Text(
+                        detailPin.category.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(detailPin.pin.name, style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                detailPin.pin.detailLines.forEach { line ->
+                    Text(line, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
 }
 
 @Composable
-private fun CategoryMapView(pins: List<CategoryMapPin>, hasLocationPermission: Boolean) {
+private fun CategoryMapView(
+    pins: List<CategoryMapPin>,
+    hasLocationPermission: Boolean,
+    onMarkerClick: (CategoryMapPin) -> Unit
+) {
     val cameraPositionState = rememberCameraPositionState()
 
     LaunchedEffect(pins) {
@@ -229,7 +272,11 @@ private fun CategoryMapView(pins: List<CategoryMapPin>, hasLocationPermission: B
                 state = MarkerState(position = LatLng(item.pin.lat, item.pin.lon)),
                 title = item.pin.name,
                 snippet = item.pin.subtitle.ifBlank { item.category.label },
-                icon = BitmapDescriptorFactory.defaultMarker(item.category.hue)
+                icon = BitmapDescriptorFactory.defaultMarker(item.category.hue),
+                onClick = {
+                    onMarkerClick(item)
+                    true
+                }
             )
         }
     }

@@ -486,7 +486,11 @@ class MainActivity : ComponentActivity() {
         val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["TOUR"]?.get("domain")
             ?: "https://apis.data.go.kr/B551011/KorService2"
         return TourNearbyStore.findNearest(domain, serviceKey, lat, lon).map { f ->
-            MapPin(name = f.name, lat = f.lat, lon = f.lon, subtitle = "${formatDistance(f.distanceMeters)} / ${f.addr}")
+            MapPin(
+                name = f.name, lat = f.lat, lon = f.lon,
+                subtitle = "${formatDistance(f.distanceMeters)} / ${f.addr}",
+                detailLines = listOf("주소: ${f.addr}", "거리: ${formatDistance(f.distanceMeters)}")
+            )
         }
     }
 
@@ -494,12 +498,18 @@ class MainActivity : ComponentActivity() {
     // 5곳을 쓴다 - 기존 채팅 명령("주유소 내주변"/"메뉴 내주변")처럼 가격/
     // 대표메뉴를 추가로 실시간 조회하진 않는다(이 지도 화면은 "위치 보기"가
     // 목적이라 범위를 좁힘 - 가격/메뉴까지 핀에 띄우고 싶으면 후속 작업).
-    // 핀 색이 다르므로 지도에서는 구분되지만, 상세 텍스트는 이름만 나온다.
+    // 핀 색이 다르므로 지도에서는 구분되지만, 상세 바텀시트엔 이름/거리만 나온다.
     private suspend fun fetchGasPins(lat: Double, lon: Double): List<MapPin> =
-        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map { MapPin(name = it.name, lat = it.lat, lon = it.lon) }
+        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map {
+            val distance = formatDistance(haversineMeters(lat, lon, it.lat, it.lon).toInt())
+            MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = listOf("거리: $distance"))
+        }
 
     private suspend fun fetchMenuPins(lat: Double, lon: Double): List<MapPin> =
-        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map { MapPin(name = it.name, lat = it.lat, lon = it.lon) }
+        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map {
+            val distance = formatDistance(haversineMeters(lat, lon, it.lat, it.lon).toInt())
+            MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = listOf("거리: $distance"))
+        }
 
     private suspend fun fetchParkingPins(lat: Double, lon: Double): List<MapPin> {
         val match = resolveParkingRegion(lat, lon) ?: return emptyList()
@@ -512,8 +522,32 @@ class MainActivity : ComponentActivity() {
             userLat = lat, userLon = lon, feeFilter = null
         )
         return nearest.map { p ->
-            MapPin(name = p.name, lat = p.lat, lon = p.lon, subtitle = "${formatDistance(p.distanceMeters)} / ${p.feeName}")
+            MapPin(
+                name = p.name, lat = p.lat, lon = p.lon,
+                subtitle = "${formatDistance(p.distanceMeters)} / ${p.feeName}",
+                detailLines = listOf(
+                    "주소: ${p.addr}",
+                    "거리: ${formatDistance(p.distanceMeters)}",
+                    "주차면수: ${p.spaceCount}면",
+                    "요금: ${p.feeName}",
+                    "관리기관: ${p.agentName}"
+                )
+            )
         }
+    }
+
+    /** 각 fetch*Pins가 공용으로 쓰는 거리 계산(ParkingNearbyStore에도 같은
+     *  공식이 있지만 private이라 공유 불가 - 10줄짜리 표준 공식이라 중복 비용이
+     *  거의 없음). */
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+            kotlin.math.sin(dLon / 2) * kotlin.math.sin(dLon / 2)
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+        return r * c
     }
 
     /**
