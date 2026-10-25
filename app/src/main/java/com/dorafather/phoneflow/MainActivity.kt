@@ -557,7 +557,7 @@ class MainActivity : ComponentActivity() {
             if (menuItems.isNotEmpty()) {
                 menuItems.forEach { m -> lines.add("${m.foodName} - ${m.foodCost}원") }
             } else {
-                lines.add("대표메뉴 정보가 없습니다")
+                lines.add("메뉴 정보가 없습니다")
             }
             MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = lines)
         }

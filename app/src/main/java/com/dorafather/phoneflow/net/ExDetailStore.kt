@@ -89,16 +89,19 @@ object ExDetailStore {
         return query(areaName.removeSuffix(suffix))
     }
 
-    /** rest.sce의 EX메뉴근처 체인과 같은 이유로 이름 정확 일치를 요구하지
-     *  않는다(클래스 주석 2번) - 다만 그 체인은 첫 항목 하나만 쓰는 것과
-     *  달리, 여기선 바텀시트에 여러 줄 보여줄 여유가 있어 최대 5개까지 모은다. */
+    /** rest.sce의 "전체메뉴"(EX전체메뉴조회전송)와 동일 - bestfoodyn 필터를
+     *  안 둬서 대표메뉴만이 아니라 등록된 전체 메뉴를 돌려준다(2026-10-25
+     *  "대표메뉴 말고 일반 상세 목록" 요청으로 bestfoodyn=Y 제거, numOfRows도
+     *  전체메뉴 기준인 50으로 맞춤). 이름 정확 일치를 요구하지 않는 이유는
+     *  클래스 주석 2번 참고 - 다만 "근처" 체인은 첫 항목 하나만 쓰는 것과
+     *  달리, 여기선 바텀시트에 여러 줄 보여줄 여유가 있어 최대 10개까지 모은다. */
     fun fetchMenuItems(domain: String, serviceKey: String, areaName: String): List<MenuItem> {
         val url = "$domain/restinfo/restBestfoodList" +
             "?key=${URLEncoder.encode(serviceKey, "UTF-8")}&type=json" +
-            "&stdRestNm=${URLEncoder.encode(areaName, "UTF-8")}&bestfoodyn=Y&numOfRows=20"
+            "&stdRestNm=${URLEncoder.encode(areaName, "UTF-8")}&numOfRows=50"
         val list = fetchJson(url).optJSONArray("list") ?: return emptyList()
         val results = mutableListOf<MenuItem>()
-        for (i in 0 until minOf(list.length(), 5)) {
+        for (i in 0 until minOf(list.length(), 10)) {
             val item = list.getJSONObject(i)
             results.add(MenuItem(foodName = item.optString("foodNm"), foodCost = item.optString("foodCost")))
         }
