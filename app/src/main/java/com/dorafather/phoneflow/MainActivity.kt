@@ -979,6 +979,14 @@ private fun AppRoot(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        // "지도에서 드래그가 잘 안 먹힌다, 좌측 슬라이드 메뉴 때문인가?"
+        // (2026-10-25 피드백) - 맞다: ModalNavigationDrawer는 기본적으로 화면
+        // 전체에서 가장자리 스와이프를 감지해 드로워를 열려고 하는데, 이
+        // 제스처 감지가 지도의 팬(드래그) 제스처와 경쟁해 지도 조작이
+        // 끊기거나 씹히는 원인이 된다. 드로워는 이미 햄버거 버튼으로 항상
+        // 열 수 있으니, 지도 화면에서만 스와이프 제스처를 꺼서 지도가 전체
+        // 드래그 영역을 온전히 가져가게 한다.
+        gesturesEnabled = screen != Screen.MAP_BROWSER,
         drawerContent = {
             ModalDrawerSheet {
                 CommandDrawerContent(
@@ -1116,6 +1124,13 @@ private fun AppRoot(
                         // 대화창으로 복귀하는 길을 열어두는 디자인 참고).
                         if (screen != Screen.CHAT) {
                             ChatEntryButton(onClick = { screen = Screen.CHAT })
+                            Spacer(modifier = Modifier.width(12.dp))
+                        } else {
+                            // "채팅 화면에도 일관성 있게 지도로 가는 아이콘이 있어야
+                            // 한다"(2026-10-25 피드백) - 다른 화면들의 ChatEntryButton
+                            // (채팅으로 바로 복귀)과 대칭되는, 채팅에서 지도로 바로
+                            // 가는 버튼.
+                            MapEntryButton(onClick = { screen = Screen.MAP_BROWSER })
                             Spacer(modifier = Modifier.width(12.dp))
                         }
                     },
@@ -1715,6 +1730,23 @@ private fun ChatEntryButton(onClick: () -> Unit) {
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text("💬")
+        }
+    }
+}
+
+/** ChatEntryButton과 대칭 - 채팅 화면에서 "지도" 브라우저로 바로 가는
+ *  버튼(2026-10-25 "일관성 있게 지도 아이콘이 있어야" 요청). */
+@Composable
+private fun MapEntryButton(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        color = Color.White
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text("🗺️")
         }
     }
 }

@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -99,6 +101,20 @@ fun MapBrowserScreen(
     // 대신 화면 하단에서 여러 줄 상세정보를 보여준다.
     var selectedPin by remember { mutableStateOf<CategoryMapPin?>(null) }
 
+    // "화면을 이동하면 재검색 버튼이 있어야겠다"(2026-10-25 요청) - 지도를
+    // 여기서 직접 들고 있어야 카메라 중심 좌표(재검색 기준점)와 "사용자가
+    // 직접 움직였는지"를 같이 판단할 수 있다. isProgrammaticMove는 핀이 처음
+    // 뜰 때 자동으로 맞추는 카메라 애니메이션(아래 fitBoundsSignal 이펙트)과
+    // 사용자가 손가락으로 움직인 걸 구분하는 용도 - 이게 true인 동안의 이동은
+    // 재검색 버튼을 띄우지 않는다.
+    val cameraPositionState = rememberCameraPositionState()
+    var isProgrammaticMove by remember { mutableStateOf(false) }
+    var showResearch by remember { mutableStateOf(false) }
+    // 체크박스를 막 켜서 처음 핀이 뜰 때만 카메라를 자동으로 맞춘다(아래
+    // toggle()에서만 증가시킴) - "재검색"은 사용자가 고른 현재 화면 위치를
+    // 존중해야 하므로 결과가 바뀌어도 카메라를 다시 맞추지 않는다.
+    var fitBoundsSignal by remember { mutableStateOf(0) }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -145,7 +161,58 @@ fun MapBrowserScreen(
                 }
                 cache[category] = result
                 loading[category] = false
+                fitBoundsSignal++
             }
+        }
+    }
+
+    /** "이 위치에서 재검색" - 지도 중심(사용자가 손으로 옮긴 위치)을 기준으로
+     *  현재 켜진 카테고리들을 전부 다시 조회한다. 카메라는 건드리지 않는다
+     *  (fitBoundsSignal을 안 올림 - 사용자가 보던 화면 그대로 유지). */
+    fun researchHere() {
+        val center = cameraPositionState.position.target
+        showResearch = false
+        MapCategory.values().filter { checked[it] == true }.forEach { category ->
+            loading[category] = true
+            scope.launch(Dispatchers.IO) {
+                val result = try {
+                    fetcherFor(category)(center.latitude, center.longitude)
+                } catch (_: Throwable) {
+                    emptyList()
+                }
+                cache[category] = result
+                loading[category] = false
+            }
+        }
+    }
+
+    LaunchedEffect(fitBoundsSignal) {
+        if (fitBoundsSignal == 0) return@LaunchedEffect
+        val pins = MapCategory.values()
+            .filter { checked[it] == true }
+            .flatMap { category -> (cache[category] ?: emptyList()).map { CategoryMapPin(it, category) } }
+        if (pins.isEmpty()) return@LaunchedEffect
+        isProgrammaticMove = true
+        if (pins.size == 1) {
+            cameraPositionState.animate(
+                com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                    LatLng(pins[0].pin.lat, pins[0].pin.lon), 15f
+                )
+            )
+        } else {
+            val bounds = com.google.android.gms.maps.model.LatLngBounds.Builder().apply {
+                pins.forEach { include(LatLng(it.pin.lat, it.pin.lon)) }
+            }.build()
+            cameraPositionState.animate(
+                com.google.android.gms.maps.CameraUpdateFactory.newLatLngBounds(bounds, 120)
+            )
+        }
+        isProgrammaticMove = false
+    }
+
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (cameraPositionState.isMoving && !isProgrammaticMove) {
+            showResearch = true
         }
     }
 
@@ -186,6 +253,7 @@ fun MapBrowserScreen(
             CategoryMapView(
                 pins = visiblePins,
                 hasLocationPermission = hasLocationPermission,
+                cameraPositionState = cameraPositionState,
                 onMarkerClick = { selectedPin = it }
             )
             if (loading.values.any { it }) {
@@ -205,6 +273,26 @@ fun MapBrowserScreen(
                             modifier = Modifier.padding(start = 6.dp)
                         )
                     }
+                }
+            } else if (showResearch && checked.values.any { it }) {
+                // "화면을 이동하면 재검색 버튼이 있어야겠다"(2026-10-25 요청) -
+                // 네이버/카카오맵처럼 사용자가 직접 지도를 움직였을 때만 뜬다
+                // (fitBoundsSignal 이펙트의 isProgrammaticMove 판별 참고).
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { researchHere() },
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        "🔄 이 위치에서 재검색",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
             }
         }
@@ -248,28 +336,12 @@ fun MapBrowserScreen(
 private fun CategoryMapView(
     pins: List<CategoryMapPin>,
     hasLocationPermission: Boolean,
+    cameraPositionState: com.google.maps.android.compose.CameraPositionState,
     onMarkerClick: (CategoryMapPin) -> Unit
 ) {
-    val cameraPositionState = rememberCameraPositionState()
-
-    LaunchedEffect(pins) {
-        if (pins.isEmpty()) return@LaunchedEffect
-        if (pins.size == 1) {
-            cameraPositionState.animate(
-                com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
-                    LatLng(pins[0].pin.lat, pins[0].pin.lon), 15f
-                )
-            )
-        } else {
-            val bounds = com.google.android.gms.maps.model.LatLngBounds.Builder().apply {
-                pins.forEach { include(LatLng(it.pin.lat, it.pin.lon)) }
-            }.build()
-            cameraPositionState.animate(
-                com.google.android.gms.maps.CameraUpdateFactory.newLatLngBounds(bounds, 120)
-            )
-        }
-    }
-
+    // 카메라 자동 맞춤(최초 핀 표시)과 사용자 드래그 감지는 MapBrowserScreen이
+    // cameraPositionState를 직접 들고 처리한다(2026-10-25 "재검색" 버튼
+    // 추가 - 카메라 중심 좌표/이동 판별을 거기서 같이 해야 해서 끌어올림).
     GoogleMap(
         modifier = Modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
