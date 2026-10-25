@@ -23,7 +23,16 @@ object TourNearbyStore {
         val addr: String,
         val distanceMeters: Int,
         val lat: Double,
-        val lon: Double
+        val lon: Double,
+        val contentId: String
+    )
+
+    data class FestivalDetail(
+        val startDate: String,
+        val endDate: String,
+        val playTime: String,
+        val place: String,
+        val useTime: String
     )
 
     /** 동기 호출 - 반드시 메인 스레드 밖에서 호출할 것. */
@@ -72,10 +81,45 @@ object TourNearbyStore {
                     addr = item.optString("addr1"),
                     distanceMeters = item.optString("dist").toDoubleOrNull()?.toInt() ?: 0,
                     lat = lat,
-                    lon = lon
+                    lon = lon,
+                    contentId = item.optString("contentid")
                 )
             )
         }
         return results
+    }
+
+    /**
+     * locationBasedList2는 일정/장소/이용요금 같은 상세 필드를 안 주므로
+     * (2026-10-25 "행사 상세정보" 요청으로 추가) contentId로 detailIntro2를
+     * 한 번 더 호출한다(핀마다 1회씩, N+1 - 이 프로젝트의 HIRA/EGEN 기능과
+     * 같은 패턴). 값이 없는 필드는 빈 문자열로 둔다(호출부가 걸러서 표시).
+     */
+    fun fetchDetail(domain: String, serviceKey: String, contentId: String): FestivalDetail? {
+        if (contentId.isBlank()) return null
+        val url = "$domain/detailIntro2" +
+            "?serviceKey=${URLEncoder.encode(serviceKey, "UTF-8")}" +
+            "&MobileOS=ETC&MobileApp=phoneFlow&_type=json" +
+            "&contentId=$contentId&contentTypeId=15"
+        var conn: HttpURLConnection? = null
+        val body = try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+            }
+            BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use { it.readText() }
+        } finally {
+            conn?.disconnect()
+        }
+        val item = JSONObject(body).optJSONObject("response")?.optJSONObject("body")
+            ?.optJSONObject("items")?.optJSONArray("item")?.optJSONObject(0) ?: return null
+        return FestivalDetail(
+            startDate = item.optString("eventstartdate"),
+            endDate = item.optString("eventenddate"),
+            playTime = item.optString("playtime"),
+            place = item.optString("eventplace"),
+            useTime = item.optString("usetimefestival")
+        )
     }
 }

@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.dorafather.phoneflow.net.AddrIniStore
 import com.dorafather.phoneflow.net.ChatHistoryStore
+import com.dorafather.phoneflow.net.ExDetailStore
 import com.dorafather.phoneflow.net.ExRestAreaStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.dorafather.phoneflow.net.IniParser
@@ -486,30 +487,81 @@ class MainActivity : ComponentActivity() {
         val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["TOUR"]?.get("domain")
             ?: "https://apis.data.go.kr/B551011/KorService2"
         return TourNearbyStore.findNearest(domain, serviceKey, lat, lon).map { f ->
+            // locationBasedList2엔 일정/장소가 없어 contentId로 상세를 한 번 더
+            // 호출한다(2026-10-25 "행사 상세정보" 요청, TourNearbyStore.fetchDetail
+            // 주석 참고 - 핀 하나당 1회, N+1).
+            val detail = try {
+                TourNearbyStore.fetchDetail(domain, serviceKey, f.contentId)
+            } catch (_: Throwable) {
+                null
+            }
+            val lines = mutableListOf("주소: ${f.addr}", "거리: ${formatDistance(f.distanceMeters)}")
+            if (detail != null) {
+                if (detail.startDate.isNotBlank()) {
+                    lines.add("기간: ${formatYyyymmdd(detail.startDate)} ~ ${formatYyyymmdd(detail.endDate)}")
+                }
+                if (detail.playTime.isNotBlank()) lines.add("운영시간: ${detail.playTime}")
+                if (detail.place.isNotBlank()) lines.add("장소: ${detail.place}")
+                if (detail.useTime.isNotBlank()) lines.add("이용요금: ${detail.useTime}")
+            }
             MapPin(
                 name = f.name, lat = f.lat, lon = f.lon,
                 subtitle = "${formatDistance(f.distanceMeters)} / ${f.addr}",
-                detailLines = listOf("주소: ${f.addr}", "거리: ${formatDistance(f.distanceMeters)}")
+                detailLines = lines
             )
         }
     }
 
-    // 주유소/메뉴 체크박스는 같은 로컬 DB(ExRestAreaStore)에서 같은 최근접
-    // 5곳을 쓴다 - 기존 채팅 명령("주유소 내주변"/"메뉴 내주변")처럼 가격/
-    // 대표메뉴를 추가로 실시간 조회하진 않는다(이 지도 화면은 "위치 보기"가
-    // 목적이라 범위를 좁힘 - 가격/메뉴까지 핀에 띄우고 싶으면 후속 작업).
-    // 핀 색이 다르므로 지도에서는 구분되지만, 상세 바텀시트엔 이름/거리만 나온다.
-    private suspend fun fetchGasPins(lat: Double, lon: Double): List<MapPin> =
-        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map {
-            val distance = formatDistance(haversineMeters(lat, lon, it.lat, it.lon).toInt())
-            MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = listOf("거리: $distance"))
-        }
+    private fun formatYyyymmdd(s: String): String =
+        if (s.length == 8) "${s.substring(0, 4)}.${s.substring(4, 6)}.${s.substring(6, 8)}" else s
 
-    private suspend fun fetchMenuPins(lat: Double, lon: Double): List<MapPin> =
-        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map {
+    // 주유소/메뉴 체크박스는 위치 자체는 같은 로컬 DB(ExRestAreaStore)의 같은
+    // 최근접 5곳을 쓰지만, 핀 클릭 상세는 각자 다른 EX 실시간 API를 추가로
+    // 호출한다(2026-10-25 "주유소는 가격, 메뉴는 대표메뉴" 요청 - ExDetailStore
+    // 참고, rest.sce의 EX가격/EX메뉴 체인과 동일 API).
+    private suspend fun fetchGasPins(lat: Double, lon: Double): List<MapPin> {
+        val serviceKey = AddrIniStore.readRaw(filesDir, "EX")
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["EX"]?.get("domain")
+            ?: "https://data.ex.co.kr/openapi"
+        return ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map {
             val distance = formatDistance(haversineMeters(lat, lon, it.lat, it.lon).toInt())
-            MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = listOf("거리: $distance"))
+            val price = if (serviceKey != null) {
+                try { ExDetailStore.fetchGasPrice(domain, serviceKey, it.name) } catch (_: Throwable) { null }
+            } else null
+            val lines = mutableListOf("거리: $distance")
+            if (price != null) {
+                lines.add("${price.routeName} ${price.direction}")
+                lines.add("주유소: ${price.oilCompany}")
+                // EX API는 gasolinePrice/diselPrice에 "원"을 이미 포함해서 준다
+                // ("1,848원" 그대로) - 뒤에 또 붙이면 "원원"이 됨(2026-10-25 실기기
+                // 확인 후 수정).
+                lines.add("휘발유: ${price.gasolinePrice}")
+                lines.add("경유: ${price.diselPrice}")
+            } else {
+                lines.add("가격 정보가 없습니다")
+            }
+            MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = lines)
         }
+    }
+
+    private suspend fun fetchMenuPins(lat: Double, lon: Double): List<MapPin> {
+        val serviceKey = AddrIniStore.readRaw(filesDir, "EX")
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["EX"]?.get("domain")
+            ?: "https://data.ex.co.kr/openapi"
+        return ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map {
+            val distance = formatDistance(haversineMeters(lat, lon, it.lat, it.lon).toInt())
+            val menuItems = if (serviceKey != null) {
+                try { ExDetailStore.fetchMenuItems(domain, serviceKey, it.name) } catch (_: Throwable) { emptyList() }
+            } else emptyList()
+            val lines = mutableListOf("거리: $distance")
+            if (menuItems.isNotEmpty()) {
+                menuItems.forEach { m -> lines.add("${m.foodName} - ${m.foodCost}원") }
+            } else {
+                lines.add("대표메뉴 정보가 없습니다")
+            }
+            MapPin(name = it.name, lat = it.lat, lon = it.lon, subtitle = distance, detailLines = lines)
+        }
+    }
 
     private suspend fun fetchParkingPins(lat: Double, lon: Double): List<MapPin> {
         val match = resolveParkingRegion(lat, lon) ?: return emptyList()
