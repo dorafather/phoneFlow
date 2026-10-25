@@ -77,6 +77,7 @@ import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.dorafather.phoneflow.net.IniParser
 import com.dorafather.phoneflow.net.LawdCodeStore
 import com.dorafather.phoneflow.net.ParkingNearbyStore
+import com.dorafather.phoneflow.net.TourNearbyStore
 import com.dorafather.phoneflow.net.WatchlistStore
 import com.dorafather.phoneflow.ui.theme.PhoneFlowBlueLight
 import com.dorafather.phoneflow.ui.theme.PhoneFlowStripeGray
@@ -94,7 +95,7 @@ private const val TAG = "phoneFlow/JNI"
 
 data class ChatMessage(val text: String, val fromUser: Boolean, val markers: List<MapPin>? = null)
 
-private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER, MAP }
+private enum class Screen { CHAT, SETTINGS, PROVIDER_DETAIL, SCENARIO, LAWD_PICKER, KMA_PICKER, FESTIVAL_PICKER, HIRA_PICKER, EGEN_PICKER, EX_PICKER, MAP, MAP_BROWSER }
 
 /** "내 주변" 응답 하나가 만드는 텍스트와 지도 핀을 함께 돌려주기 위한 결과 타입
  *  (2026-10-25 "지도로 보기" 추가 - 주차장류 함수들이 String 대신 이걸 반환). */
@@ -183,7 +184,11 @@ class MainActivity : ComponentActivity() {
                         onNearbyParkingPaidResolved = ::handleNearbyParkingPaidRequest,
                         onNearbyParkingLocationFailed = ::handleNearbyParkingLocationFailed,
                         onParkingCheapestResolved = ::handleParkingCheapestRequest,
-                        onNearbyMarkersComputed = ::stashNearbyMarkers
+                        onNearbyMarkersComputed = ::stashNearbyMarkers,
+                        onFetchFestivalPins = ::fetchFestivalPins,
+                        onFetchGasPins = ::fetchGasPins,
+                        onFetchMenuPins = ::fetchMenuPins,
+                        onFetchParkingPins = ::fetchParkingPins
                     )
                 }
             }
@@ -472,6 +477,46 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * "지도" 체크박스 브라우저(2026-10-25 추가) 전용 카테고리별 조회 함수
+     * 4개 - MapBrowserScreen에 콜백으로 넘겨준다. 전부 Dispatchers.IO에서
+     * 호출됨을 전제로 한다(MapBrowserScreen의 scope.launch(Dispatchers.IO)).
+     */
+    private suspend fun fetchFestivalPins(lat: Double, lon: Double): List<MapPin> {
+        val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA") ?: return emptyList()
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["TOUR"]?.get("domain")
+            ?: "https://apis.data.go.kr/B551011/KorService2"
+        return TourNearbyStore.findNearest(domain, serviceKey, lat, lon).map { f ->
+            MapPin(name = f.name, lat = f.lat, lon = f.lon, subtitle = "${formatDistance(f.distanceMeters)} / ${f.addr}")
+        }
+    }
+
+    // 주유소/메뉴 체크박스는 같은 로컬 DB(ExRestAreaStore)에서 같은 최근접
+    // 5곳을 쓴다 - 기존 채팅 명령("주유소 내주변"/"메뉴 내주변")처럼 가격/
+    // 대표메뉴를 추가로 실시간 조회하진 않는다(이 지도 화면은 "위치 보기"가
+    // 목적이라 범위를 좁힘 - 가격/메뉴까지 핀에 띄우고 싶으면 후속 작업).
+    // 핀 색이 다르므로 지도에서는 구분되지만, 상세 텍스트는 이름만 나온다.
+    private suspend fun fetchGasPins(lat: Double, lon: Double): List<MapPin> =
+        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map { MapPin(name = it.name, lat = it.lat, lon = it.lon) }
+
+    private suspend fun fetchMenuPins(lat: Double, lon: Double): List<MapPin> =
+        ExRestAreaStore.nearest(filesDir, lat, lon, limit = 5).map { MapPin(name = it.name, lat = it.lat, lon = it.lon) }
+
+    private suspend fun fetchParkingPins(lat: Double, lon: Double): List<MapPin> {
+        val match = resolveParkingRegion(lat, lon) ?: return emptyList()
+        val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA") ?: return emptyList()
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["PARKING"]?.get("domain")
+            ?: "https://apis.data.go.kr/B553881/Parking_v1"
+        val nearest = ParkingNearbyStore.findNearest(
+            domain = domain, serviceKey = serviceKey,
+            sidoCd = match.parentCode5.take(2), sigunguCd = match.parentCode5,
+            userLat = lat, userLon = lon, feeFilter = null
+        )
+        return nearest.map { p ->
+            MapPin(name = p.name, lat = p.lat, lon = p.lon, subtitle = "${formatDistance(p.distanceMeters)} / ${p.feeName}")
+        }
+    }
+
+    /**
      * 행사 "내 주변"만 markers 필드를 들고 온다(2026-10-25 "지도로 보기"
      * 추가) - rest.sce엔 JSON 배열을 직접 조립할 수단이 없어, text 필드의
      * "|" 구분 관례를 그대로 재사용해 "이름^위도^경도"를 "|"로 이어붙인
@@ -514,7 +559,9 @@ private const val FRESH_LOCATION_FALLBACK_MAX_AGE_MS = 10 * 60 * 1000L
 
 private const val LOCATION_TAG = "phoneFlow/Location"
 
-private fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit) {
+// internal(private 아님) - MapBrowserScreen.kt(2026-10-25 "지도" 체크박스
+// 브라우저 추가)도 같은 GPS 로직을 재사용한다.
+internal fun requestFreshLocation(context: Context, onResult: (Location?) -> Unit) {
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     val providers = lm.getProviders(true)
     Log.i(LOCATION_TAG, "요청 시작 - 사용 가능한 provider=$providers")
@@ -616,7 +663,11 @@ private fun AppRoot(
     onNearbyParkingPaidResolved: (Double, Double) -> Unit,
     onNearbyParkingLocationFailed: (String) -> Unit,
     onParkingCheapestResolved: (Double, Double) -> Unit,
-    onNearbyMarkersComputed: (String, List<MapPin>) -> Unit
+    onNearbyMarkersComputed: (String, List<MapPin>) -> Unit,
+    onFetchFestivalPins: suspend (Double, Double) -> List<MapPin>,
+    onFetchGasPins: suspend (Double, Double) -> List<MapPin>,
+    onFetchMenuPins: suspend (Double, Double) -> List<MapPin>,
+    onFetchParkingPins: suspend (Double, Double) -> List<MapPin>
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -924,6 +975,10 @@ private fun AppRoot(
                         requestParkingCheapest()
                         screen = Screen.CHAT
                         scope.launch { drawerState.close() }
+                    },
+                    onMapBrowserPicked = {
+                        screen = Screen.MAP_BROWSER
+                        scope.launch { drawerState.close() }
                     }
                 )
             }
@@ -956,6 +1011,7 @@ private fun AppRoot(
                                     Screen.EGEN_PICKER -> "지역 검색"
                                     Screen.EX_PICKER -> "휴게소 검색"
                                     Screen.MAP -> "지도로 보기"
+                                    Screen.MAP_BROWSER -> "지도"
                                     Screen.CHAT -> "PhoneFlow"
                                 }
                             )
@@ -1001,6 +1057,12 @@ private fun AppRoot(
                         }
                     )
                     Screen.MAP -> NearbyMapScreen(pins = mapScreenPins)
+                    Screen.MAP_BROWSER -> MapBrowserScreen(
+                        onFetchFestival = onFetchFestivalPins,
+                        onFetchGas = onFetchGasPins,
+                        onFetchMenu = onFetchMenuPins,
+                        onFetchParking = onFetchParkingPins
+                    )
                     Screen.SETTINGS -> SettingsScreen(filesDir = filesDir) { section ->
                         selectedProvider = section
                         screen = Screen.PROVIDER_DETAIL
@@ -1134,7 +1196,8 @@ private fun CommandDrawerContent(
     onNearbyParkingRequested: () -> Unit,
     onNearbyParkingFreeRequested: () -> Unit,
     onNearbyParkingPaidRequested: () -> Unit,
-    onParkingCheapestRequested: () -> Unit
+    onParkingCheapestRequested: () -> Unit,
+    onMapBrowserPicked: () -> Unit
 ) {
     val groups = remember(isDrawerOpen) { loadAvailableCommandGroups(filesDir) }
     val expanded = remember { mutableStateListOf<String>() }
@@ -1523,6 +1586,14 @@ private fun CommandDrawerContent(
             }
         }
         androidx.compose.material3.Divider()
+        Text(
+            "🗺️ 지도",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .clickableCompat { onMapBrowserPicked() }
+        )
         Text(
             "⚙ 설정",
             style = MaterialTheme.typography.titleMedium,
