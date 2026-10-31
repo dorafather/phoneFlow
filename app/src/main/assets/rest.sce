@@ -22,6 +22,7 @@
   PHARM.수신메시지.응답코드 == 200    처리.PHARM목록응답처리
   PARKING.수신메시지.응답코드 == 200    처리.PARKING목록응답처리
   GOCAMPING.수신메시지.응답코드 == 200    처리.GOCAMPING응답분기처리
+  TOURPHOTO.수신메시지.응답코드 == 200    처리.TOURPHOTO응답분기처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -54,6 +55,7 @@
     함수.앞자리비교(cmd_전체메뉴,세션.chat_input_text,전체메뉴)
     함수.앞자리비교(cmd_고캠핑,세션.chat_input_text,고캠핑)
     함수.앞자리비교(cmd_주변고캠핑,세션.chat_input_text,주변고캠핑)
+    함수.앞자리비교(cmd_관광사진,세션.chat_input_text,관광사진)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -112,6 +114,8 @@
     처리.텔레그램고캠핑명령처리
   그외그외(세션.cmd_주변고캠핑 == 1)
     처리.텔레그램주변고캠핑명령처리
+  그외그외(세션.cmd_관광사진 == 1)
+    처리.텔레그램관광사진명령처리
   그외
     전송.명령모름응답
 }
@@ -159,6 +163,7 @@
 주변행사 - 내 주변 행사/공연/축제 조회(드로워 > 행사 > 내 주변에서 위치 권한 허용 필요)
 고캠핑 [키워드] - 캠핑장 이름/지역명으로 캠핑장 검색(최근 5곳, 예: 고캠핑 춘천)
 주변고캠핑 - 내 주변 10km 이내 캠핑장 조회(드로워 > 고캠핑 > 내 주변에서 위치 권한 허용 필요)
+관광사진 [키워드] - 키워드로 한국관광공사 관광사진 검색(최근 5건, 사진 URL 포함, 예: 관광사진 서울 야경)
 병원 [지역] - 해당 지역 병원 요일별 진료시간/야간진료 여부 조회(최근 5곳, 드로워 > 병원 > 지역 선택에서 검색)
 응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(드로워 > 응급실 > 가용병상 조회에서 검색 권장, 직접 입력 시 정확한 공식 명칭 필요: 예) 응급실 서울특별시 종로구)
 당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 드로워 > 당직병원 > 지역 조회에서 검색 권장, 직접 입력 예) 당직병원 서울특별시 종로구)
@@ -4009,6 +4014,105 @@ $$$세션.keco_watch_alert_text$$$}
 {내 주변 10km 이내에는 캠핑장 정보가 없습니다.}
 문장::TELEGRAM.GOCAMPING주변위치없음문장
 {위치 정보를 가져오지 못했습니다. 드로워 > 고캠핑 > 내 주변에서 위치 권한을 허용했는지 확인해주세요.}
+처리::TELEGRAM.텔레그램관광사진명령처리
+{
+  만약에(참)
+    함수.단어분리(tourphoto_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.tourphoto_cmd_word_list,1)
+    처리.TOURPHOTO명령파싱
+}
+처리::TOURPHOTO.TOURPHOTO명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(tourphoto_reply_text,문장.TOURPHOTO키워드없음문장)
+    전송.TOURPHOTO응답전송
+  그외
+    함수.저장(tourphoto_keyword,세션.cmd_rest)
+    전송.TOURPHOTO검색전송
+}
+처리::TOURPHOTO.TOURPHOTO응답분기처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(tourphoto_reply_text,문장.TOURPHOTO검색없음문장)
+    전송.TOURPHOTO응답전송
+  그외
+    함수.객체저장(tourphoto_items,수신메시지.response.body.items.item)
+    함수.저장(tourphoto_idx,0)
+    함수.저장(tourphoto_count,0)
+    함수.저장(tourphoto_summary_lines,없음)
+    처리.TOURPHOTO항목순회
+}
+처리::TOURPHOTO.TOURPHOTO항목순회
+{
+  만약에(세션.객체.tourphoto_items[세션.tourphoto_idx].galTitle == NULL)
+    함수.저장(tourphoto_reply_text,문장.TOURPHOTO검색요약문장)
+    전송.TOURPHOTO응답전송
+  그외그외(세션.tourphoto_count >= 5)
+    함수.저장(tourphoto_reply_text,문장.TOURPHOTO검색요약문장)
+    전송.TOURPHOTO응답전송
+  그외
+    함수.저장(tourphoto_cur_title,세션.객체.tourphoto_items[세션.tourphoto_idx].galTitle)
+    함수.저장(tourphoto_cur_month,세션.객체.tourphoto_items[세션.tourphoto_idx].galPhotographyMonth)
+    함수.저장(tourphoto_cur_url,세션.객체.tourphoto_items[세션.tourphoto_idx].galWebImageUrl)
+    처리.TOURPHOTO필드확인_촬영장소
+}
+처리::TOURPHOTO.TOURPHOTO필드확인_촬영장소
+{
+  만약에(세션.객체.tourphoto_items[세션.tourphoto_idx].galPhotographyLocation == NULL)
+    함수.저장(tourphoto_cur_location,-)
+    처리.TOURPHOTO항목추가
+  그외
+    함수.저장(tourphoto_cur_location,세션.객체.tourphoto_items[세션.tourphoto_idx].galPhotographyLocation)
+    처리.TOURPHOTO항목추가
+}
+처리::TOURPHOTO.TOURPHOTO항목추가
+{
+  만약에(세션.tourphoto_count == 0)
+    함수.저장(tourphoto_summary_lines,문장.TOURPHOTO검색라인문장)
+    함수.더하기(tourphoto_count,세션.tourphoto_count,1)
+    함수.더하기(tourphoto_idx,세션.tourphoto_idx,1)
+    처리.TOURPHOTO항목순회
+  그외
+    함수.붙이기(tourphoto_summary_lines,|,문장.TOURPHOTO검색라인문장)
+    함수.더하기(tourphoto_count,세션.tourphoto_count,1)
+    함수.더하기(tourphoto_idx,세션.tourphoto_idx,1)
+    처리.TOURPHOTO항목순회
+}
+전송::TOURPHOTO.TOURPHOTO검색전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.TOURPHOTO.domain
+  전송메시지.주소.경로 = /gallerySearchList1
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = numOfRows
+  전송메시지.주소.파라미터[4].val = 5
+  전송메시지.주소.파라미터[5].key = pageNo
+  전송메시지.주소.파라미터[5].val = 1
+  전송메시지.주소.파라미터[6].key = arrange
+  전송메시지.주소.파라미터[6].val = C
+  전송메시지.주소.파라미터[7].key = keyword
+  전송메시지.주소.파라미터[7].val = 세션.tourphoto_keyword
+}
+전송::FLOW.TOURPHOTO응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.tourphoto_reply_text
+}
+문장::TOURPHOTO.TOURPHOTO검색라인문장
+{$$$세션.tourphoto_cur_title$$$ ($$$세션.tourphoto_cur_month$$$, $$$세션.tourphoto_cur_location$$$) $$$세션.tourphoto_cur_url$$$}
+문장::TOURPHOTO.TOURPHOTO검색요약문장
+{"$$$세션.tourphoto_keyword$$$" 검색 결과 관광사진 (최근 $$$세션.tourphoto_count$$$건): $$$세션.tourphoto_summary_lines$$$}
+문장::TOURPHOTO.TOURPHOTO검색없음문장
+{"$$$세션.tourphoto_keyword$$$"(으)로 검색된 관광사진이 없습니다.}
+문장::TELEGRAM.TOURPHOTO키워드없음문장
+{검색할 관광사진 키워드를 입력해주세요. 예) "관광사진 서울 야경"}
 처리::TELEGRAM.텔레그램병원명령처리
 {
   만약에(참)

@@ -72,6 +72,14 @@
       ]
     },
     {
+      "label": "관광사진",
+      "icon": "📷",
+      "requires_section": "TOURPHOTO",
+      "items": [
+        {"label": "검색", "insert": "관광사진 "}
+      ]
+    },
+    {
       "label": "병원",
       "icon": "🏥",
       "requires_section": "HIRA",
