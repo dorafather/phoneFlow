@@ -6,8 +6,10 @@ import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
@@ -70,7 +71,7 @@ import kotlinx.coroutines.launch
 private enum class MapCategory(val label: String, val hue: Float) {
     FESTIVAL("행사", BitmapDescriptorFactory.HUE_VIOLET),
     GAS("주유소", BitmapDescriptorFactory.HUE_ORANGE),
-    MENU("메뉴", BitmapDescriptorFactory.HUE_GREEN),
+    MENU("휴게소 메뉴", BitmapDescriptorFactory.HUE_GREEN),
     PARKING("주차장", BitmapDescriptorFactory.HUE_AZURE),
     GOCAMPING("고캠핑", BitmapDescriptorFactory.HUE_ROSE),
     EVCHARGER("충전소", BitmapDescriptorFactory.HUE_CYAN)
@@ -83,7 +84,7 @@ private fun hueToSwatchColor(hue: Float): Color {
     return Color(argb)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MapBrowserScreen(
     onFetchFestival: suspend (Double, Double) -> List<MapPin>,
@@ -251,25 +252,35 @@ fun MapBrowserScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
+        // 카테고리가 늘어날수록 가로 한 줄에 다 안 들어와(2026-11-01 "충전소"
+        // 추가 때 가로 스크롤로 먼저 처리했다가, "맵 서비스가 늘어나는 만큼
+        // 상하 슬라이드로 전체 보여주는 게 낫겠다" 요청으로 교체) - FlowRow로
+        // 여러 줄에 걸쳐 자동 줄바꿈하고, 줄 수가 많아져도 지도 영역을
+        // 밀어내지 않도록 이 블록 자체를 높이 제한 + 세로 스크롤로 감싼다.
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
+                .heightIn(max = 120.dp)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            MapCategory.values().forEach { category ->
-                Row(
-                    modifier = Modifier.padding(end = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = checked[category] ?: false,
-                        onCheckedChange = { toggle(category) },
-                        colors = androidx.compose.material3.CheckboxDefaults.colors(
-                            checkedColor = hueToSwatchColor(category.hue)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                MapCategory.values().forEach { category ->
+                    Row(
+                        modifier = Modifier.padding(end = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = checked[category] ?: false,
+                            onCheckedChange = { toggle(category) },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                checkedColor = hueToSwatchColor(category.hue)
+                            )
                         )
-                    )
-                    Text(category.label, style = MaterialTheme.typography.bodySmall)
+                        Text(category.label, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
