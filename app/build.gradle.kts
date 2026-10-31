@@ -116,4 +116,7 @@ dependencies {
     // 최신 9.x는 Kotlin 2.x/훨씬 최신 compose-bom 전제라 이 프로젝트의
     // Kotlin 1.9.24/Compose Compiler 1.5.14와 안 맞음).
     implementation("com.google.maps.android:maps-compose:6.1.2")
+    // 고캠핑 대표이미지(firstImageUrl) 표시용(2026-11-01 추가) - compose-bom
+    // 2024.06.00/Kotlin 1.9.24 환경에서도 문제없이 쓸 수 있는 2.x 라인으로 고정.
+    implementation("io.coil-kt:coil-compose:2.6.0")
 }

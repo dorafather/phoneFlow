@@ -38,8 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.dorafather.phoneflow.net.SafeMapWmsTileProvider
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
@@ -385,6 +387,18 @@ fun MapBrowserScreen(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(detailPin.pin.name, style = MaterialTheme.typography.titleMedium)
+                if (detailPin.pin.imageUrl.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AsyncImage(
+                        model = detailPin.pin.imageUrl,
+                        contentDescription = detailPin.pin.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 detailPin.pin.detailLines.forEach { line ->
                     Text(line, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp))

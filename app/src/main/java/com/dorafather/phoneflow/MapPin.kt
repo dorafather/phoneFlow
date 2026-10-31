@@ -11,5 +11,6 @@ data class MapPin(
     val lat: Double,
     val lon: Double,
     val subtitle: String = "",
-    val detailLines: List<String> = emptyList()
+    val detailLines: List<String> = emptyList(),
+    val imageUrl: String = ""
 )

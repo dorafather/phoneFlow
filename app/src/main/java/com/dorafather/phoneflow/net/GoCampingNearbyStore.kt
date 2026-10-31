@@ -28,7 +28,12 @@ object GoCampingNearbyStore {
         val sbrsCl: String,
         val animalCmgCl: String,
         val lat: Double,
-        val lon: Double
+        val lon: Double,
+        val lineIntro: String,
+        val operPdCl: String,
+        val manageSttus: String,
+        val resveUrl: String,
+        val firstImageUrl: String
     )
 
     /** 동기 호출 - 반드시 메인 스레드 밖에서 호출할 것. */
@@ -79,7 +84,12 @@ object GoCampingNearbyStore {
                     sbrsCl = item.optString("sbrsCl"),
                     animalCmgCl = item.optString("animalCmgCl"),
                     lat = lat,
-                    lon = lon
+                    lon = lon,
+                    lineIntro = item.optString("lineIntro"),
+                    operPdCl = item.optString("operPdCl"),
+                    manageSttus = item.optString("manageSttus"),
+                    resveUrl = item.optString("resveUrl"),
+                    firstImageUrl = item.optString("firstImageUrl")
                 )
             )
         }

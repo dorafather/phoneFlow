@@ -598,16 +598,22 @@ class MainActivity : ComponentActivity() {
         val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["GOCAMPING"]?.get("domain")
             ?: "https://apis.data.go.kr/B551011/GoCamping"
         return GoCampingNearbyStore.findNearest(domain, serviceKey, lat, lon).map { c ->
-            val lines = mutableListOf("주소: ${c.addr}")
+            val lines = mutableListOf<String>()
+            if (c.lineIntro.isNotBlank()) lines.add(c.lineIntro)
+            lines.add("주소: ${c.addr}")
             if (c.induty.isNotBlank()) lines.add("업종: ${c.induty}")
+            if (c.manageSttus.isNotBlank()) lines.add("운영상태: ${c.manageSttus}")
+            if (c.operPdCl.isNotBlank()) lines.add("운영기간: ${c.operPdCl}")
             if (c.tel.isNotBlank()) lines.add("전화: ${c.tel}")
             if (c.sbrsCl.isNotBlank()) lines.add("부대시설: ${c.sbrsCl}")
             if (c.animalCmgCl.isNotBlank()) lines.add("애완동물: ${c.animalCmgCl}")
+            if (c.resveUrl.isNotBlank()) lines.add("예약: ${c.resveUrl}")
             if (c.homepage.isNotBlank()) lines.add("홈페이지: ${c.homepage}")
             MapPin(
                 name = c.name, lat = c.lat, lon = c.lon,
                 subtitle = c.induty.ifBlank { c.addr },
-                detailLines = lines
+                detailLines = lines,
+                imageUrl = c.firstImageUrl
             )
         }
     }
