@@ -74,6 +74,8 @@ import com.dorafather.phoneflow.net.AddrIniStore
 import com.dorafather.phoneflow.net.ChatHistoryStore
 import com.dorafather.phoneflow.net.ExDetailStore
 import com.dorafather.phoneflow.net.ExRestAreaStore
+import com.dorafather.phoneflow.net.EvChargerNearbyStore
+import com.dorafather.phoneflow.net.EvChargerRegionCodeStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
 import com.dorafather.phoneflow.net.IniParser
 import com.dorafather.phoneflow.net.LawdCodeStore
@@ -191,7 +193,8 @@ class MainActivity : ComponentActivity() {
                         onFetchGasPins = ::fetchGasPins,
                         onFetchMenuPins = ::fetchMenuPins,
                         onFetchParkingPins = ::fetchParkingPins,
-                        onFetchGoCampingPins = ::fetchGoCampingPins
+                        onFetchGoCampingPins = ::fetchGoCampingPins,
+                        onFetchEvChargerPins = ::fetchEvChargerPins
                     )
                 }
             }
@@ -325,6 +328,27 @@ class MainActivity : ComponentActivity() {
         val sidoName = address.adminArea
         val candidates = LawdCodeStore.search(filesDir, sigunguName, limit = 30)
         return candidates.firstOrNull { sidoName != null && it.fullName.startsWith(sidoName) }
+            ?: candidates.firstOrNull()
+    }
+
+    /**
+     * "전기차충전소" 지도 카테고리 전용 GPS -> zcode/zscode 변환(2026-11-01
+     * 추가) - resolveParkingRegion과 같은 Geocoder 전제(특별시·광역시는
+     * subAdminArea/locality가 비고 subLocality에 구 이름이 옴)를 그대로
+     * 쓰되, lawd_codes.db 대신 이 API 전용 EvChargerRegionCodeStore를 찾는다.
+     */
+    private fun resolveEvChargerRegion(lat: Double, lon: Double): EvChargerRegionCodeStore.EvRegionMatch? {
+        val address = try {
+            @Suppress("DEPRECATION")
+            Geocoder(this, Locale.KOREA).getFromLocation(lat, lon, 1)?.firstOrNull()
+        } catch (t: Throwable) {
+            Log.e(TAG, "역지오코딩 실패", t)
+            null
+        } ?: return null
+        val sigunguName = address.subAdminArea ?: address.locality ?: address.subLocality ?: return null
+        val sidoName = address.adminArea ?: ""
+        val candidates = EvChargerRegionCodeStore.candidatesFor(sigunguName)
+        return candidates.firstOrNull { EvChargerRegionCodeStore.matchesSido(it, sidoName) }
             ?: candidates.firstOrNull()
     }
 
@@ -618,6 +642,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 환경부/한국환경공단 전기차 충전소(2026-11-01 추가) - Parking과 동일한
+    // 이유로 Kotlin이 직접 조회한다(getChargerInfo는 zcode/zscode 지역
+    // 필터만 지원, 반경 검색 없음). 응답이 "충전기" 단위 레코드라
+    // EvChargerNearbyStore가 statId로 묶어 충전소 하나당 핀 하나로 돌려준다.
+    private suspend fun fetchEvChargerPins(lat: Double, lon: Double): List<MapPin> {
+        val match = resolveEvChargerRegion(lat, lon) ?: return emptyList()
+        val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA") ?: return emptyList()
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["EVCHARGER"]?.get("domain")
+            ?: "https://apis.data.go.kr/B552584/EvCharger"
+        val nearest = EvChargerNearbyStore.findNearest(
+            domain = domain, serviceKey = serviceKey,
+            zcode = match.zcode, zscode = match.zscode,
+            userLat = lat, userLon = lon
+        )
+        return nearest.map { s ->
+            val lines = mutableListOf<String>()
+            lines.add("주소: ${s.addr}${if (s.addrDetail.isNotBlank()) " (${s.addrDetail})" else ""}")
+            if (s.location.isNotBlank()) lines.add("상세위치: ${s.location}")
+            if (s.useTime.isNotBlank()) lines.add("이용가능시간: ${s.useTime}")
+            lines.add("운영기관: ${s.busiNm.ifBlank { s.bnm }}")
+            if (s.busiCall.isNotBlank()) lines.add("연락처: ${s.busiCall}")
+            s.chargers.forEach { c ->
+                val outputText = if (c.output.isNotBlank()) " ${c.output}kW" else ""
+                lines.add("충전기 ${c.chgerId}: ${c.chgerTypeLabel}$outputText - ${c.statLabel}")
+            }
+            if (s.parkingFree.isNotBlank()) lines.add("주차료: ${if (s.parkingFree == "Y") "무료" else "유료"}")
+            if (s.limitYn == "Y" && s.limitDetail.isNotBlank()) lines.add("이용제한: ${s.limitDetail}")
+            if (s.note.isNotBlank()) lines.add("안내: ${s.note}")
+            val availableCount = s.chargers.count { it.stat == "2" }
+            MapPin(
+                name = s.name, lat = s.lat, lon = s.lon,
+                subtitle = "${formatDistance(s.distanceMeters)} / 사용가능 $availableCount/${s.chargers.size}대",
+                detailLines = lines
+            )
+        }
+    }
+
     /** 각 fetch*Pins가 공용으로 쓰는 거리 계산(ParkingNearbyStore에도 같은
      *  공식이 있지만 private이라 공유 불가 - 10줄짜리 표준 공식이라 중복 비용이
      *  거의 없음). */
@@ -784,7 +845,8 @@ private fun AppRoot(
     onFetchGasPins: suspend (Double, Double) -> List<MapPin>,
     onFetchMenuPins: suspend (Double, Double) -> List<MapPin>,
     onFetchParkingPins: suspend (Double, Double) -> List<MapPin>,
-    onFetchGoCampingPins: suspend (Double, Double) -> List<MapPin>
+    onFetchGoCampingPins: suspend (Double, Double) -> List<MapPin>,
+    onFetchEvChargerPins: suspend (Double, Double) -> List<MapPin>
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -1233,6 +1295,7 @@ private fun AppRoot(
                         onFetchMenu = onFetchMenuPins,
                         onFetchParking = onFetchParkingPins,
                         onFetchGoCamping = onFetchGoCampingPins,
+                        onFetchEvCharger = onFetchEvChargerPins,
                         safemapDomain = safemapDomain,
                         safemapServiceKey = safemapServiceKey
                     )
