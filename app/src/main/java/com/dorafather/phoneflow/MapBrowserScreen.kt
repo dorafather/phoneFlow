@@ -21,9 +21,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -114,6 +118,9 @@ fun MapBrowserScreen(
     val checked = remember { mutableStateMapOf<MapCategory, Boolean>() }
     val cache = remember { mutableStateMapOf<MapCategory, List<MapPin>>() }
     val loading = remember { mutableStateMapOf<MapCategory, Boolean>() }
+    // 카테고리 패널 펼치기/접기(2026-11-01 "고정하면 지도를 가리니 슬라이드로"
+    // 요청) - 기본은 접어서 지도를 넓게 보여주고, 버튼을 눌렀을 때만 펼친다.
+    var panelExpanded by remember { mutableStateOf(false) }
     // 핀(마커) 클릭 상세내역 바텀시트(2026-10-25 추가) - 기본 InfoWindow
     // 대신 화면 하단에서 여러 줄 상세정보를 보여준다.
     var selectedPin by remember { mutableStateOf<CategoryMapPin?>(null) }
@@ -252,67 +259,89 @@ fun MapBrowserScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // 카테고리가 늘어날수록 가로 한 줄에 다 안 들어와(2026-11-01 "충전소"
-        // 추가 때 가로 스크롤로 먼저 처리했다가, "맵 서비스가 늘어나는 만큼
-        // 상하 슬라이드로 전체 보여주는 게 낫겠다" 요청으로 교체) - FlowRow로
-        // 여러 줄에 걸쳐 자동 줄바꿈하고, 줄 수가 많아져도 지도 영역을
-        // 밀어내지 않도록 이 블록 자체를 높이 제한 + 세로 스크롤로 감싼다.
-        Column(
+        // 카테고리/레이어 패널을 고정으로 항상 펼쳐두면 서비스가 늘어날수록
+        // 지도를 많이 가린다(2026-11-01 "슬라이드 형태로, 버튼 누르면
+        // 펼쳐졌다가 다시 누르면 좁혀지게" 요청) - 기본은 이 헤더 한 줄만
+        // 보이고, 눌러야 아래 체크박스 패널이 펼쳐진다.
+        val activeCount = checked.values.count { it } + if (crimeLayerEnabled) 1 else 0
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 120.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clickable { panelExpanded = !panelExpanded }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                MapCategory.values().forEach { category ->
-                    Row(
-                        modifier = Modifier.padding(end = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = checked[category] ?: false,
-                            onCheckedChange = { toggle(category) },
-                            colors = androidx.compose.material3.CheckboxDefaults.colors(
-                                checkedColor = hueToSwatchColor(category.hue)
-                            )
-                        )
-                        Text(category.label, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
+            Text(
+                "지도 서비스 선택" + if (activeCount > 0) " ($activeCount)" else "",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = if (panelExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                contentDescription = if (panelExpanded) "패널 접기" else "패널 펼치기"
+            )
         }
-        // 범죄주의구간 WMS 레이어 토글(2026-10-31 추가) - addr.ini에 SAFEMAP
-        // 키가 없으면 아예 안 보여준다(설정 안 된 기능을 보여줘 혼란 주지 않음).
-        if (safemapServiceKey != null) {
-            Row(
+        if (panelExpanded) {
+            // 카테고리가 늘어날수록 가로 한 줄에 다 안 들어와 FlowRow로 여러
+            // 줄에 걸쳐 자동 줄바꿈하고, 줄 수가 많아지면 패널 자체를 세로
+            // 스크롤(높이 제한)로 감싼다 - 펼친 상태에서도 지도가 완전히
+            // 가려지지 않도록.
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Checkbox(checked = crimeLayerEnabled, onCheckedChange = { crimeLayerEnabled = it })
-                Text("범죄주의구간", style = MaterialTheme.typography.bodySmall)
-                if (crimeLayerEnabled) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    SafeMapWmsTileProvider.CrimeType.values().forEach { type ->
-                        Surface(
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .clip(MaterialTheme.shapes.small)
-                                .clickable { selectedCrimeType = type },
-                            color = if (type == selectedCrimeType) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = MaterialTheme.shapes.small
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    MapCategory.values().forEach { category ->
+                        Row(
+                            modifier = Modifier.padding(end = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                type.label,
-                                color = if (type == selectedCrimeType) Color.White else Color.Unspecified,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            Checkbox(
+                                checked = checked[category] ?: false,
+                                onCheckedChange = { toggle(category) },
+                                colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                    checkedColor = hueToSwatchColor(category.hue)
+                                )
                             )
+                            Text(category.label, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                // 범죄주의구간 WMS 레이어 토글(2026-10-31 추가) - addr.ini에
+                // SAFEMAP 키가 없으면 아예 안 보여준다(설정 안 된 기능을
+                // 보여줘 혼란 주지 않음).
+                if (safemapServiceKey != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = crimeLayerEnabled, onCheckedChange = { crimeLayerEnabled = it })
+                        Text("범죄주의구간", style = MaterialTheme.typography.bodySmall)
+                        if (crimeLayerEnabled) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            SafeMapWmsTileProvider.CrimeType.values().forEach { type ->
+                                Surface(
+                                    modifier = Modifier
+                                        .padding(end = 4.dp)
+                                        .clip(MaterialTheme.shapes.small)
+                                        .clickable { selectedCrimeType = type },
+                                    color = if (type == selectedCrimeType) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        type.label,
+                                        color = if (type == selectedCrimeType) Color.White else Color.Unspecified,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
