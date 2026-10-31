@@ -68,7 +68,8 @@ private enum class MapCategory(val label: String, val hue: Float) {
     FESTIVAL("행사", BitmapDescriptorFactory.HUE_VIOLET),
     GAS("주유소", BitmapDescriptorFactory.HUE_ORANGE),
     MENU("메뉴", BitmapDescriptorFactory.HUE_GREEN),
-    PARKING("주차장", BitmapDescriptorFactory.HUE_AZURE)
+    PARKING("주차장", BitmapDescriptorFactory.HUE_AZURE),
+    GOCAMPING("고캠핑", BitmapDescriptorFactory.HUE_ROSE)
 }
 
 private data class CategoryMapPin(val pin: MapPin, val category: MapCategory)
@@ -85,6 +86,7 @@ fun MapBrowserScreen(
     onFetchGas: suspend (Double, Double) -> List<MapPin>,
     onFetchMenu: suspend (Double, Double) -> List<MapPin>,
     onFetchParking: suspend (Double, Double) -> List<MapPin>,
+    onFetchGoCamping: suspend (Double, Double) -> List<MapPin>,
     // 범죄주의구간 WMS 레이어(2026-10-31 추가) - 핀 카테고리와 달리 위치
     // 조회가 필요 없어 도메인/키만 받으면 된다. 키가 없으면(addr.ini 미설정)
     // 체크박스 자체를 안 보여준다.
@@ -170,6 +172,7 @@ fun MapBrowserScreen(
         MapCategory.GAS -> onFetchGas
         MapCategory.MENU -> onFetchMenu
         MapCategory.PARKING -> onFetchParking
+        MapCategory.GOCAMPING -> onFetchGoCamping
     }
 
     fun toggle(category: MapCategory) {

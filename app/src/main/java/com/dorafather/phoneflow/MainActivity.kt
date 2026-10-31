@@ -79,6 +79,7 @@ import com.dorafather.phoneflow.net.IniParser
 import com.dorafather.phoneflow.net.LawdCodeStore
 import com.dorafather.phoneflow.net.ParkingNearbyStore
 import com.dorafather.phoneflow.net.TourNearbyStore
+import com.dorafather.phoneflow.net.GoCampingNearbyStore
 import com.dorafather.phoneflow.net.WatchlistStore
 import com.dorafather.phoneflow.ui.theme.PhoneFlowBlueLight
 import com.dorafather.phoneflow.ui.theme.PhoneFlowStripeGray
@@ -189,7 +190,8 @@ class MainActivity : ComponentActivity() {
                         onFetchFestivalPins = ::fetchFestivalPins,
                         onFetchGasPins = ::fetchGasPins,
                         onFetchMenuPins = ::fetchMenuPins,
-                        onFetchParkingPins = ::fetchParkingPins
+                        onFetchParkingPins = ::fetchParkingPins,
+                        onFetchGoCampingPins = ::fetchGoCampingPins
                     )
                 }
             }
@@ -588,6 +590,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // GoCamping locationBasedList는 응답 자체에 주소/전화/업종/부대시설이
+    // 다 들어있어(2026-11-01 추가) 행사(fetchFestivalPins)처럼 상세 API를
+    // 추가로 호출할 필요가 없다 - N+1 없음.
+    private suspend fun fetchGoCampingPins(lat: Double, lon: Double): List<MapPin> {
+        val serviceKey = AddrIniStore.readRaw(filesDir, "K_DATA") ?: return emptyList()
+        val domain = IniParser.parse(File(filesDir, "addr.ini").readText())["GOCAMPING"]?.get("domain")
+            ?: "https://apis.data.go.kr/B551011/GoCamping"
+        return GoCampingNearbyStore.findNearest(domain, serviceKey, lat, lon).map { c ->
+            val lines = mutableListOf("주소: ${c.addr}")
+            if (c.induty.isNotBlank()) lines.add("업종: ${c.induty}")
+            if (c.tel.isNotBlank()) lines.add("전화: ${c.tel}")
+            if (c.sbrsCl.isNotBlank()) lines.add("부대시설: ${c.sbrsCl}")
+            if (c.animalCmgCl.isNotBlank()) lines.add("애완동물: ${c.animalCmgCl}")
+            if (c.homepage.isNotBlank()) lines.add("홈페이지: ${c.homepage}")
+            MapPin(
+                name = c.name, lat = c.lat, lon = c.lon,
+                subtitle = c.induty.ifBlank { c.addr },
+                detailLines = lines
+            )
+        }
+    }
+
     /** 각 fetch*Pins가 공용으로 쓰는 거리 계산(ParkingNearbyStore에도 같은
      *  공식이 있지만 private이라 공유 불가 - 10줄짜리 표준 공식이라 중복 비용이
      *  거의 없음). */
@@ -753,7 +777,8 @@ private fun AppRoot(
     onFetchFestivalPins: suspend (Double, Double) -> List<MapPin>,
     onFetchGasPins: suspend (Double, Double) -> List<MapPin>,
     onFetchMenuPins: suspend (Double, Double) -> List<MapPin>,
-    onFetchParkingPins: suspend (Double, Double) -> List<MapPin>
+    onFetchParkingPins: suspend (Double, Double) -> List<MapPin>,
+    onFetchGoCampingPins: suspend (Double, Double) -> List<MapPin>
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -1201,6 +1226,7 @@ private fun AppRoot(
                         onFetchGas = onFetchGasPins,
                         onFetchMenu = onFetchMenuPins,
                         onFetchParking = onFetchParkingPins,
+                        onFetchGoCamping = onFetchGoCampingPins,
                         safemapDomain = safemapDomain,
                         safemapServiceKey = safemapServiceKey
                     )
