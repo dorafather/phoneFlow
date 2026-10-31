@@ -64,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -1890,7 +1891,11 @@ private fun ChatEntryButton(onClick: () -> Unit) {
 /** ChatEntryButton과 대칭 - 채팅 화면에서 "지도" 브라우저로 바로 가는
  *  버튼(2026-10-25 "일관성 있게 지도 아이콘이 있어야" 요청). 이모지(🗺️)가
  *  작은 화면에서 잘 안 보인다는 2026-11-01 피드백으로 전용 아이콘
- *  이미지(map_icon.jpg)로 교체. */
+ *  이미지(map_icon.jpg)로 교체했는데, 원본 이미지 자체에 원 둘레로 흰
+ *  여백이 있어 햄버거(☰) 아이콘보다 작고 흐릿해 보인다는 추가 피드백으로
+ *  확대(scale)해 흰 여백을 원 밖으로 밀어낸다(Surface의 clip(CircleShape)가
+ *  넘치는 부분을 원 모양으로 잘라줌).
+ */
 @Composable
 private fun MapEntryButton(onClick: () -> Unit) {
     Surface(
@@ -1904,7 +1909,9 @@ private fun MapEntryButton(onClick: () -> Unit) {
             painter = painterResource(id = R.drawable.map_icon),
             contentDescription = "지도",
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .scale(1.28f)
         )
     }
 }
