@@ -63,6 +63,15 @@
       ]
     },
     {
+      "label": "고캠핑",
+      "icon": "⛺",
+      "requires_section": "GOCAMPING",
+      "items": [
+        {"label": "검색", "insert": "고캠핑 "},
+        {"label": "내 주변", "insert": "주변고캠핑 "}
+      ]
+    },
+    {
       "label": "병원",
       "icon": "🏥",
       "requires_section": "HIRA",

@@ -822,6 +822,31 @@ private fun AppRoot(
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
+    fun fillNearbyGoCampingCommand() {
+        requestFreshLocation(context) { best ->
+            if (best == null) {
+                val insert = "주변고캠핑 "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
+            } else {
+                val insert = "주변고캠핑 ${best.latitude}@${best.longitude} "
+                input = TextFieldValue(insert, selection = TextRange(insert.length))
+            }
+        }
+    }
+    val gocampingLocationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) fillNearbyGoCampingCommand() }
+    fun requestNearbyGoCamping() {
+        val hasPermission = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            fillNearbyGoCampingCommand()
+        } else {
+            gocampingLocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
 
     // "주유소 > 내 주변"(2026-10-12 추가) - 행사의 GPS 플로우와 완전히 같은
     // 패턴이지만, 외부 API에 좌표를 바로 넘기는 게 아니라 로컬 DB
@@ -1031,6 +1056,11 @@ private fun AppRoot(
                     },
                     onNearbyFestivalRequested = {
                         requestNearbyFestival()
+                        screen = Screen.CHAT
+                        scope.launch { drawerState.close() }
+                    },
+                    onNearbyGoCampingRequested = {
+                        requestNearbyGoCamping()
                         screen = Screen.CHAT
                         scope.launch { drawerState.close() }
                     },
@@ -1299,6 +1329,7 @@ private fun CommandDrawerContent(
     onKmaPickerRequested: () -> Unit,
     onFestivalPickerRequested: () -> Unit,
     onNearbyFestivalRequested: () -> Unit,
+    onNearbyGoCampingRequested: () -> Unit,
     onHiraPickerRequested: () -> Unit,
     onEgenPickerRequested: (String) -> Unit,
     onExPickerRequested: (String) -> Unit,
@@ -1531,6 +1562,22 @@ private fun CommandDrawerContent(
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                                         .clickableCompat { onNearbyFestivalRequested() }
+                                )
+                            }
+                        } else if (group.label == "고캠핑" && cmd.label == "내 주변") {
+                            // GoCamping locationBasedList 연동(2026-10-31 추가) - 위치
+                            // 권한 확인/요청과 마지막 위치 읽기는 AppRoot의
+                            // onNearbyGoCampingRequested가 처리하고, 여기서는 그냥
+                            // 호출만 한다. "검색" 리프는 GoCamping API에 지역코드
+                            // 파라미터가 없어(행사/병원과 다름) 지역 선택 화면 없이
+                            // 기본 insert-only 동작으로 충분하다.
+                            item(key = "item-${group.label}-${cmd.label}") {
+                                Text(
+                                    cmd.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        .clickableCompat { onNearbyGoCampingRequested() }
                                 )
                             }
                         } else if (group.label == "병원" && cmd.label == "지역 선택") {

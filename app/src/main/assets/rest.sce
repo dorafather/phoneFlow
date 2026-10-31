@@ -21,6 +21,7 @@
   EX.수신메시지.응답코드 == 200    처리.EX응답처리
   PHARM.수신메시지.응답코드 == 200    처리.PHARM목록응답처리
   PARKING.수신메시지.응답코드 == 200    처리.PARKING목록응답처리
+  GOCAMPING.수신메시지.응답코드 == 200    처리.GOCAMPING응답분기처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -51,6 +52,8 @@
     함수.앞자리비교(cmd_테마,세션.chat_input_text,테마)
     함수.앞자리비교(cmd_이벤트,세션.chat_input_text,이벤트)
     함수.앞자리비교(cmd_전체메뉴,세션.chat_input_text,전체메뉴)
+    함수.앞자리비교(cmd_고캠핑,세션.chat_input_text,고캠핑)
+    함수.앞자리비교(cmd_주변고캠핑,세션.chat_input_text,주변고캠핑)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -105,6 +108,10 @@
     처리.텔레그램이벤트명령처리
   그외그외(세션.cmd_전체메뉴 == 1)
     처리.텔레그램전체메뉴명령처리
+  그외그외(세션.cmd_고캠핑 == 1)
+    처리.텔레그램고캠핑명령처리
+  그외그외(세션.cmd_주변고캠핑 == 1)
+    처리.텔레그램주변고캠핑명령처리
   그외
     전송.명령모름응답
 }
@@ -150,6 +157,8 @@
 행사 [계약년월] - 해당 월 전국 행사/공연/축제 조회
 행사 [지역명] [계약년월] - 해당 지역/월 행사/공연/축제 조회(17개 시도는 이름만 바로 가능, 그 외 세부지역은 드로워 > 행사 > 지역 선택에서 검색)
 주변행사 - 내 주변 행사/공연/축제 조회(드로워 > 행사 > 내 주변에서 위치 권한 허용 필요)
+고캠핑 [키워드] - 캠핑장 이름/지역명으로 캠핑장 검색(최근 5곳, 예: 고캠핑 춘천)
+주변고캠핑 - 내 주변 10km 이내 캠핑장 조회(드로워 > 고캠핑 > 내 주변에서 위치 권한 허용 필요)
 병원 [지역] - 해당 지역 병원 요일별 진료시간/야간진료 여부 조회(최근 5곳, 드로워 > 병원 > 지역 선택에서 검색)
 응급실 [시도] [시군구] - 해당 지역 응급실 실시간 가용병상 조회(드로워 > 응급실 > 가용병상 조회에서 검색 권장, 직접 입력 시 정확한 공식 명칭 필요: 예) 응급실 서울특별시 종로구)
 당직병원 [시도] [시군구] - 해당 지역 응급의료기관 요일별 진료시간 조회(최근 5곳, 드로워 > 당직병원 > 지역 조회에서 검색 권장, 직접 입력 예) 당직병원 서울특별시 종로구)
@@ -3758,6 +3767,248 @@ $$$세션.keco_watch_alert_text$$$}
 {내 주변 5km 이내에는 행사/공연/축제 정보가 없습니다.}
 문장::TELEGRAM.TOUR주변위치없음문장
 {위치 정보를 가져오지 못했습니다. 드로워 > 행사 > 내 주변에서 위치 권한을 허용했는지 확인해주세요.}
+처리::TELEGRAM.텔레그램고캠핑명령처리
+{
+  만약에(참)
+    함수.저장(gocamping_mode,검색)
+    함수.저장(gocamping_marker_lines,없음)
+    함수.단어분리(gocamping_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.gocamping_cmd_word_list,1)
+    처리.GOCAMPING명령파싱
+}
+처리::GOCAMPING.GOCAMPING명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING키워드없음문장)
+    전송.GOCAMPING응답전송
+  그외
+    함수.저장(gocamping_keyword,세션.cmd_rest)
+    전송.GOCAMPING검색전송
+}
+처리::GOCAMPING.GOCAMPING응답분기처리
+{
+  만약에(세션.gocamping_mode == 주변)
+    처리.GOCAMPING주변응답분기처리
+  그외
+    처리.GOCAMPING검색응답분기처리
+}
+처리::GOCAMPING.GOCAMPING검색응답분기처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING검색없음문장)
+    전송.GOCAMPING응답전송
+  그외
+    함수.객체저장(gocamping_items,수신메시지.response.body.items.item)
+    함수.저장(gocamping_idx,0)
+    함수.저장(gocamping_count,0)
+    함수.저장(gocamping_summary_lines,없음)
+    처리.GOCAMPING항목순회
+}
+처리::GOCAMPING.GOCAMPING항목순회
+{
+  만약에(세션.객체.gocamping_items[세션.gocamping_idx].facltNm == NULL)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING검색요약문장)
+    전송.GOCAMPING응답전송
+  그외그외(세션.gocamping_count >= 5)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING검색요약문장)
+    전송.GOCAMPING응답전송
+  그외
+    함수.저장(gocamping_cur_name,세션.객체.gocamping_items[세션.gocamping_idx].facltNm)
+    처리.GOCAMPING필드확인_업종
+}
+처리::GOCAMPING.GOCAMPING필드확인_업종
+{
+  만약에(세션.객체.gocamping_items[세션.gocamping_idx].induty == NULL)
+    함수.저장(gocamping_cur_induty,-)
+    처리.GOCAMPING필드확인_주소
+  그외
+    함수.저장(gocamping_cur_induty,세션.객체.gocamping_items[세션.gocamping_idx].induty)
+    처리.GOCAMPING필드확인_주소
+}
+처리::GOCAMPING.GOCAMPING필드확인_주소
+{
+  만약에(세션.객체.gocamping_items[세션.gocamping_idx].addr1 == NULL)
+    함수.저장(gocamping_cur_addr,-)
+    처리.GOCAMPING항목추가
+  그외
+    함수.저장(gocamping_cur_addr,세션.객체.gocamping_items[세션.gocamping_idx].addr1)
+    처리.GOCAMPING항목추가
+}
+처리::GOCAMPING.GOCAMPING항목추가
+{
+  만약에(세션.gocamping_count == 0)
+    함수.저장(gocamping_summary_lines,문장.GOCAMPING검색라인문장)
+    함수.더하기(gocamping_count,세션.gocamping_count,1)
+    함수.더하기(gocamping_idx,세션.gocamping_idx,1)
+    처리.GOCAMPING항목순회
+  그외
+    함수.붙이기(gocamping_summary_lines,|,문장.GOCAMPING검색라인문장)
+    함수.더하기(gocamping_count,세션.gocamping_count,1)
+    함수.더하기(gocamping_idx,세션.gocamping_idx,1)
+    처리.GOCAMPING항목순회
+}
+전송::GOCAMPING.GOCAMPING검색전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.GOCAMPING.domain
+  전송메시지.주소.경로 = /searchList
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = numOfRows
+  전송메시지.주소.파라미터[4].val = 5
+  전송메시지.주소.파라미터[5].key = pageNo
+  전송메시지.주소.파라미터[5].val = 1
+  전송메시지.주소.파라미터[6].key = keyword
+  전송메시지.주소.파라미터[6].val = 세션.gocamping_keyword
+}
+전송::FLOW.GOCAMPING응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.gocamping_reply_text
+  전송메시지.markers = 세션.gocamping_marker_lines
+}
+문장::GOCAMPING.GOCAMPING검색라인문장
+{$$$세션.gocamping_cur_name$$$ ($$$세션.gocamping_cur_induty$$$) $$$세션.gocamping_cur_addr$$$}
+문장::GOCAMPING.GOCAMPING검색요약문장
+{"$$$세션.gocamping_keyword$$$" 검색 결과 캠핑장 (최근 $$$세션.gocamping_count$$$건): $$$세션.gocamping_summary_lines$$$}
+문장::GOCAMPING.GOCAMPING검색없음문장
+{"$$$세션.gocamping_keyword$$$"(으)로 검색된 캠핑장이 없습니다.}
+문장::TELEGRAM.GOCAMPING키워드없음문장
+{검색할 캠핑장 이름이나 지역명을 입력해주세요. 예) "고캠핑 춘천"}
+처리::TELEGRAM.텔레그램주변고캠핑명령처리
+{
+  만약에(참)
+    함수.저장(gocamping_mode,주변)
+    함수.저장(gocamping_marker_lines,없음)
+    함수.단어분리(gocampingnear_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.gocampingnear_cmd_word_list,1)
+    처리.GOCAMPING주변명령파싱
+}
+처리::GOCAMPING.GOCAMPING주변명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING주변위치없음문장)
+    전송.GOCAMPING응답전송
+  그외
+    함수.쪼개기(gocampingnear_coord_parts,세션.cmd_rest,@)
+    처리.GOCAMPING주변좌표분기
+}
+처리::GOCAMPING.GOCAMPING주변좌표분기
+{
+  만약에(세션.리스트.gocampingnear_coord_parts.SIZE == 2)
+    함수.저장(gocamping_lat,세션.리스트.gocampingnear_coord_parts[0])
+    함수.저장(gocamping_lng,세션.리스트.gocampingnear_coord_parts[1])
+    전송.GOCAMPING주변조회전송
+  그외
+    함수.저장(gocamping_reply_text,문장.GOCAMPING주변위치없음문장)
+    전송.GOCAMPING응답전송
+}
+처리::GOCAMPING.GOCAMPING주변응답분기처리
+{
+  만약에(수신메시지.response.body.totalCount == 0)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING주변없음문장)
+    전송.GOCAMPING응답전송
+  그외
+    함수.객체저장(gocampingnear_items,수신메시지.response.body.items.item)
+    함수.저장(gocampingnear_idx,0)
+    함수.저장(gocampingnear_count,0)
+    함수.저장(gocamping_summary_lines,없음)
+    처리.GOCAMPING주변항목순회
+}
+처리::GOCAMPING.GOCAMPING주변항목순회
+{
+  만약에(세션.객체.gocampingnear_items[세션.gocampingnear_idx].facltNm == NULL)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING주변요약문장)
+    전송.GOCAMPING응답전송
+  그외그외(세션.gocampingnear_count >= 5)
+    함수.저장(gocamping_reply_text,문장.GOCAMPING주변요약문장)
+    전송.GOCAMPING응답전송
+  그외
+    함수.저장(gocampingnear_cur_name,세션.객체.gocampingnear_items[세션.gocampingnear_idx].facltNm)
+    처리.GOCAMPING주변필드확인_주소
+}
+처리::GOCAMPING.GOCAMPING주변필드확인_주소
+{
+  만약에(세션.객체.gocampingnear_items[세션.gocampingnear_idx].addr1 == NULL)
+    함수.저장(gocampingnear_cur_addr,-)
+    처리.GOCAMPING주변필드확인_위도
+  그외
+    함수.저장(gocampingnear_cur_addr,세션.객체.gocampingnear_items[세션.gocampingnear_idx].addr1)
+    처리.GOCAMPING주변필드확인_위도
+}
+처리::GOCAMPING.GOCAMPING주변필드확인_위도
+{
+  만약에(세션.객체.gocampingnear_items[세션.gocampingnear_idx].mapY == NULL)
+    함수.저장(gocampingnear_cur_lat,0)
+    처리.GOCAMPING주변필드확인_경도
+  그외
+    함수.저장(gocampingnear_cur_lat,세션.객체.gocampingnear_items[세션.gocampingnear_idx].mapY)
+    처리.GOCAMPING주변필드확인_경도
+}
+처리::GOCAMPING.GOCAMPING주변필드확인_경도
+{
+  만약에(세션.객체.gocampingnear_items[세션.gocampingnear_idx].mapX == NULL)
+    함수.저장(gocampingnear_cur_lon,0)
+    처리.GOCAMPING주변항목추가
+  그외
+    함수.저장(gocampingnear_cur_lon,세션.객체.gocampingnear_items[세션.gocampingnear_idx].mapX)
+    처리.GOCAMPING주변항목추가
+}
+처리::GOCAMPING.GOCAMPING주변항목추가
+{
+  만약에(세션.gocampingnear_count == 0)
+    함수.저장(gocamping_summary_lines,문장.GOCAMPING주변라인문장)
+    함수.저장(gocamping_marker_lines,문장.GOCAMPING주변마커문장)
+    함수.더하기(gocampingnear_count,세션.gocampingnear_count,1)
+    함수.더하기(gocampingnear_idx,세션.gocampingnear_idx,1)
+    처리.GOCAMPING주변항목순회
+  그외
+    함수.붙이기(gocamping_summary_lines,|,문장.GOCAMPING주변라인문장)
+    함수.붙이기(gocamping_marker_lines,|,문장.GOCAMPING주변마커문장)
+    함수.더하기(gocampingnear_count,세션.gocampingnear_count,1)
+    함수.더하기(gocampingnear_idx,세션.gocampingnear_idx,1)
+    처리.GOCAMPING주변항목순회
+}
+전송::GOCAMPING.GOCAMPING주변조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.GOCAMPING.domain
+  전송메시지.주소.경로 = /locationBasedList
+  전송메시지.주소.파라미터[0].key = serviceKey
+  전송메시지.주소.파라미터[0].val = 설정.K_DATA.service_key
+  전송메시지.주소.파라미터[1].key = MobileOS
+  전송메시지.주소.파라미터[1].val = ETC
+  전송메시지.주소.파라미터[2].key = MobileApp
+  전송메시지.주소.파라미터[2].val = phoneFlow
+  전송메시지.주소.파라미터[3].key = _type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = numOfRows
+  전송메시지.주소.파라미터[4].val = 5
+  전송메시지.주소.파라미터[5].key = pageNo
+  전송메시지.주소.파라미터[5].val = 1
+  전송메시지.주소.파라미터[6].key = mapX
+  전송메시지.주소.파라미터[6].val = 세션.gocamping_lng
+  전송메시지.주소.파라미터[7].key = mapY
+  전송메시지.주소.파라미터[7].val = 세션.gocamping_lat
+  전송메시지.주소.파라미터[8].key = radius
+  전송메시지.주소.파라미터[8].val = 10000
+}
+문장::GOCAMPING.GOCAMPING주변라인문장
+{$$$세션.gocampingnear_cur_name$$$ $$$세션.gocampingnear_cur_addr$$$}
+문장::GOCAMPING.GOCAMPING주변마커문장
+{$$$세션.gocampingnear_cur_name$$$^$$$세션.gocampingnear_cur_lat$$$^$$$세션.gocampingnear_cur_lon$$$}
+문장::GOCAMPING.GOCAMPING주변요약문장
+{내 주변 캠핑장 (최근 $$$세션.gocampingnear_count$$$건): $$$세션.gocamping_summary_lines$$$}
+문장::GOCAMPING.GOCAMPING주변없음문장
+{내 주변 10km 이내에는 캠핑장 정보가 없습니다.}
+문장::TELEGRAM.GOCAMPING주변위치없음문장
+{위치 정보를 가져오지 못했습니다. 드로워 > 고캠핑 > 내 주변에서 위치 권한을 허용했는지 확인해주세요.}
 처리::TELEGRAM.텔레그램병원명령처리
 {
   만약에(참)
