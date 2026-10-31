@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
@@ -39,13 +40,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.dorafather.phoneflow.net.SafeMapWmsTileProvider
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.TileProvider
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.TileOverlay
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -80,7 +84,12 @@ fun MapBrowserScreen(
     onFetchFestival: suspend (Double, Double) -> List<MapPin>,
     onFetchGas: suspend (Double, Double) -> List<MapPin>,
     onFetchMenu: suspend (Double, Double) -> List<MapPin>,
-    onFetchParking: suspend (Double, Double) -> List<MapPin>
+    onFetchParking: suspend (Double, Double) -> List<MapPin>,
+    // 범죄주의구간 WMS 레이어(2026-10-31 추가) - 핀 카테고리와 달리 위치
+    // 조회가 필요 없어 도메인/키만 받으면 된다. 키가 없으면(addr.ini 미설정)
+    // 체크박스 자체를 안 보여준다.
+    safemapDomain: String,
+    safemapServiceKey: String?
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -114,6 +123,22 @@ fun MapBrowserScreen(
     // toggle()에서만 증가시킴) - "재검색"은 사용자가 고른 현재 화면 위치를
     // 존중해야 하므로 결과가 바뀌어도 카메라를 다시 맞추지 않는다.
     var fitBoundsSignal by remember { mutableStateOf(0) }
+
+    // 범죄주의구간 WMS 레이어(2026-10-31 추가) - 점 핀이 아니라 지도 전체에
+    // 겹쳐지는 이미지라 5개 유형이 서로 겹치면 뭐가 뭔지 안 보인다. 그래서
+    // 체크박스가 아니라 "레이어 켜기 + 유형 하나만 선택"(라디오 버튼 식)으로
+    // 둔다.
+    var crimeLayerEnabled by remember { mutableStateOf(false) }
+    var selectedCrimeType by remember { mutableStateOf(SafeMapWmsTileProvider.CrimeType.TOTAL) }
+    // remember를 조건문 밖에서 항상 호출하고, 켜짐/키 유무 판단은 람다
+    // 안에서 처리한다(Compose는 remember를 조건부로 호출하면 안 됨).
+    val crimeTileProvider: TileProvider? = remember(crimeLayerEnabled, selectedCrimeType, safemapServiceKey) {
+        if (crimeLayerEnabled && safemapServiceKey != null) {
+            SafeMapWmsTileProvider.create(safemapDomain, safemapServiceKey, selectedCrimeType)
+        } else {
+            null
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -238,6 +263,40 @@ fun MapBrowserScreen(
                 }
             }
         }
+        // 범죄주의구간 WMS 레이어 토글(2026-10-31 추가) - addr.ini에 SAFEMAP
+        // 키가 없으면 아예 안 보여준다(설정 안 된 기능을 보여줘 혼란 주지 않음).
+        if (safemapServiceKey != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = crimeLayerEnabled, onCheckedChange = { crimeLayerEnabled = it })
+                Text("범죄주의구간", style = MaterialTheme.typography.bodySmall)
+                if (crimeLayerEnabled) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    SafeMapWmsTileProvider.CrimeType.values().forEach { type ->
+                        Surface(
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable { selectedCrimeType = type },
+                            color = if (type == selectedCrimeType) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                type.label,
+                                color = if (type == selectedCrimeType) Color.White else Color.Unspecified,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
         if (locationFailed) {
             Text(
                 "현재 위치를 확인하지 못했습니다. 위치 권한/GPS 신호를 확인해주세요.",
@@ -254,6 +313,7 @@ fun MapBrowserScreen(
                 pins = visiblePins,
                 hasLocationPermission = hasLocationPermission,
                 cameraPositionState = cameraPositionState,
+                crimeTileProvider = crimeTileProvider,
                 onMarkerClick = { selectedPin = it }
             )
             if (loading.values.any { it }) {
@@ -337,6 +397,7 @@ private fun CategoryMapView(
     pins: List<CategoryMapPin>,
     hasLocationPermission: Boolean,
     cameraPositionState: com.google.maps.android.compose.CameraPositionState,
+    crimeTileProvider: TileProvider?,
     onMarkerClick: (CategoryMapPin) -> Unit
 ) {
     // 카메라 자동 맞춤(최초 핀 표시)과 사용자 드래그 감지는 MapBrowserScreen이
@@ -348,6 +409,11 @@ private fun CategoryMapView(
         properties = MapProperties(isMyLocationEnabled = hasLocationPermission),
         uiSettings = MapUiSettings(myLocationButtonEnabled = hasLocationPermission)
     ) {
+        // 범죄주의구간 WMS 타일은 점 핀보다 먼저(아래 레이어로) 그려야 핀이
+        // 위에 보인다(2026-10-31 추가).
+        if (crimeTileProvider != null) {
+            TileOverlay(tileProvider = crimeTileProvider)
+        }
         pins.forEach { item ->
             Marker(
                 state = MarkerState(position = LatLng(item.pin.lat, item.pin.lon)),

@@ -780,6 +780,14 @@ private fun AppRoot(
     // Screen.MAP 하나를 모든 "내 주변" 응답의 "지도로 보기"가 같이 쓴다
     // (2026-10-25 추가) - 어느 메시지의 "지도로 보기"를 눌렀는지만 여기 담아둔다.
     var mapScreenPins by remember { mutableStateOf<List<MapPin>>(emptyList()) }
+    // "지도" 브라우저의 범죄주의구간 WMS 레이어용(2026-10-31 추가) - addr.ini
+    // 읽기는 가벼운 로컬 파일이라 다른 설정값들처럼 Composable에서 바로 읽음
+    // (WatchlistStore 등 기존 관례와 동일).
+    val safemapServiceKey = remember { AddrIniStore.readRaw(filesDir, "SAFEMAP") }
+    val safemapDomain = remember {
+        IniParser.parse(File(filesDir, "addr.ini").readText())["SAFEMAP"]?.get("domain")
+            ?: "https://www.safemap.go.kr/openapi2"
+    }
 
     // "행사 > 내 주변"(GPS 기반 locationBasedList2, 2026-10-09 추가) - 위치
     // 권한이 이미 있으면 requestFreshLocation으로 위치를 구해 "주변행사
@@ -1162,7 +1170,9 @@ private fun AppRoot(
                         onFetchFestival = onFetchFestivalPins,
                         onFetchGas = onFetchGasPins,
                         onFetchMenu = onFetchMenuPins,
-                        onFetchParking = onFetchParkingPins
+                        onFetchParking = onFetchParkingPins,
+                        safemapDomain = safemapDomain,
+                        safemapServiceKey = safemapServiceKey
                     )
                     Screen.SETTINGS -> SettingsScreen(filesDir = filesDir) { section ->
                         selectedProvider = section
