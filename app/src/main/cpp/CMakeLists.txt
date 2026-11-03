@@ -112,6 +112,13 @@ target_compile_options(flowjni PRIVATE
     -std=c++11
 )
 
+# NDK 23 링커는 16KB 페이지 정렬을 기본 적용하지 않아 Android 15+ 기기에서
+# "ELF 정렬 검사 실패" 호환성 경고가 뜬다(2026-11-03 확인). NDK 업그레이드
+# 없이 링커 플래그만으로 해결.
+target_link_options(flowjni PRIVATE
+    -Wl,-z,max-page-size=16384
+)
+
 # bionic(Android libc)는 pthread/rt/resolv/nsl을 libc 자체에 포함하므로
 # 별도 링크가 필요 없다(libUtil/Makefile의 ANDROID_BUILD COMMONLIB 주석과
 # 동일한 근거). zlib는 httplib.h(미사용)에서만 걸리는 의존성이라 원래는
