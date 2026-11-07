@@ -181,7 +181,10 @@ object FlowMessageRouter : FlowCallback {
     // 그래서 이 한 서비스만 예외적으로 Kotlin 쪽(엔진에 넣기 전)에서 오늘 날짜로
     // 거르고 상위 5건 + 집계(오늘전체/오늘지연/오늘결항)만 남긴다 - 나머지 모든
     // 서비스는 여전히 원문 그대로 엔진에 넘기고 가공은 rest.sce가 전담한다.
-    private const val ICN_DOMAIN = "https://apis.data.go.kr/B551177/StatusOfPassengerFlightsDSOdp"
+    // 2026-11-07: K_DATA 계열이 전부 Cloudflare Workers 게이트웨이(phoneflow-gw)
+    // 뒤로 이전되면서 addr.ini의 실제 domain 값도 게이트웨이 주소로 바뀜 - 이
+    // 상수도 반드시 같이 맞춰야 아래 비교가 깨지지 않는다.
+    private const val ICN_DOMAIN = "https://phoneflow-gw.shiury.workers.dev/ICN"
     private const val ICN_DISPLAY_LIMIT = 5
 
     private fun icnField(item: JSONObject, key: String): String {
