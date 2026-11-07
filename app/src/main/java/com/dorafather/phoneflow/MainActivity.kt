@@ -1225,7 +1225,7 @@ private fun AppRoot(
                                     modifier = Modifier.size(28.dp).clip(CircleShape)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("PhoneFlow")
+                                Text("K공공데이터")
                             }
                         } else {
                             Text(
@@ -1241,7 +1241,7 @@ private fun AppRoot(
                                     Screen.EX_PICKER -> "휴게소 검색"
                                     Screen.MAP -> "지도로 보기"
                                     Screen.MAP_BROWSER -> "지도"
-                                    Screen.CHAT -> "PhoneFlow"
+                                    Screen.CHAT -> "K공공데이터"
                                 }
                             )
                         }
@@ -1463,7 +1463,7 @@ private fun CommandDrawerContent(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-                Text("PhoneFlow", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Text("K공공데이터", style = MaterialTheme.typography.titleLarge, color = Color.White)
                 Text(
                     "내 손 안의 공공데이터",
                     style = MaterialTheme.typography.bodySmall,
