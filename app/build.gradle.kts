@@ -33,14 +33,14 @@ val mapsApiKey = secretsProps.getProperty("MAPS_API_KEY") ?: "DEFAULT_API_KEY"
 
 android {
     namespace = "com.dorafather.phoneflow"
-    compileSdk = 34
+    compileSdk = 36
 
     ndkVersion = "23.2.8568313"
 
     defaultConfig {
         applicationId = "com.dorafather.phoneflow"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 64
         versionName = "1.19.9"
 
