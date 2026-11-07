@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
 
         try {
             copyAssetScenarioFiles()
-            GatewayKeyFetcher.fetchAndApplyExKey(filesDir)
+            GatewayKeyFetcher.applyAllManagedKeys(filesDir)
             FlowBridge.nativeSetCallback(FlowMessageRouter)
             FlowBridge.nativeInit(filesDir.absolutePath)
             Log.i(TAG, "FlowBridge.nativeInit() 호출 성공 (baseDir=${filesDir.absolutePath})")
@@ -1850,14 +1850,6 @@ private fun CommandDrawerContent(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
                 .clickableCompat { onMapBrowserPicked() }
-        )
-        Text(
-            "⚙ 설정",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp)
-                .clickableCompat { onSettingsPicked() }
         )
         Text(
             "📄 시나리오 설정",

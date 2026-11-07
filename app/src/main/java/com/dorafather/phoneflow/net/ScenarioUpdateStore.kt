@@ -2,10 +2,18 @@ package com.dorafather.phoneflow.net
 
 import java.io.File
 
-private const val RAW_BASE = "https://raw.githubusercontent.com/dorafather/phoneFlow/main/app/src/main/assets"
+// 2026-11-07: raw.githubusercontent.com을 직접 거치지 않고 게이트웨이의
+// /scenario/<파일명>을 거친다 - Worker가 GitHub 원문을 서버 쪽에서 받아와
+// addr.ini의 K_DATA/KOBIS service_key(게이트웨이 공유 토큰)만 그 자리에서
+// 끼워 넣은 뒤 돌려준다. 그 덕분에 git 저장소(public)에는 K_DATA/KOBIS도
+// EX처럼 영구 플레이스홀더만 커밋해도 되고, 토큰을 나중에 로테이션해도
+// Worker 쪽 시크릿만 바꾸면 끝난다(git 재배포 불필요). EX의 진짜 실키는
+// 이 경로로 절대 내려주지 않는다 - 여전히 GatewayKeyFetcher의 별도 /keys
+// 호출로만 관리된다.
+private const val RAW_BASE = "https://phoneflow-gw.shiury.workers.dev/scenario"
 
 /**
- * "시나리오 설정" 화면의 수동 "업데이트" 버튼 전용 - GitHub main 브랜치의
+ * "시나리오 설정" 화면의 수동 "업데이트" 버튼 전용 - 게이트웨이를 거쳐
  * addr.ini/rest.sce/commands.json 원문을 받아 기기에 적용한다(2026-10-10
  * dorafather 요청). 일일 자동 체크는 이번 범위 밖("시나리오 타이머로 하자,
  * 절전모드 때문에 일단 보류"로 범위 축소).

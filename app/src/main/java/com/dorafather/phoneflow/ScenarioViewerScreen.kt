@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.dorafather.phoneflow.net.GatewayKeyFetcher
 import com.dorafather.phoneflow.net.ScenarioUpdateStore
 import java.io.File
 
@@ -93,6 +94,11 @@ fun ScenarioViewerScreen(filesDir: File) {
                         statusMessage = "GitHub에서 확인 중..."
                         ScenarioUpdateStore.checkAndApply(filesDir) { result ->
                             checking = false
+                            // managed=gateway 섹션(K_DATA/KOBIS/EX)은 병합 시 로컬 값을
+                            // 보존하지 않고 게이트웨이 원문 값을 그대로 적용하는데, EX의
+                            // 진짜 실키는 그 원문에 안 들어있다(플레이스홀더로 되돌아감) -
+                            // 그래서 성공 시엔 항상 재조회해 EX 실키를 복구해야 한다.
+                            if (result.ok) GatewayKeyFetcher.applyAllManagedKeys(filesDir)
                             when {
                                 !result.ok -> statusMessage = "업데이트 실패: ${result.error}"
                                 result.restartNeeded -> {
