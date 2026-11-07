@@ -79,6 +79,7 @@ import com.dorafather.phoneflow.net.ExRestAreaStore
 import com.dorafather.phoneflow.net.EvChargerNearbyStore
 import com.dorafather.phoneflow.net.EvChargerRegionCodeStore
 import com.dorafather.phoneflow.net.FlowMessageRouter
+import com.dorafather.phoneflow.net.GatewayKeyFetcher
 import com.dorafather.phoneflow.net.IniParser
 import com.dorafather.phoneflow.net.LawdCodeStore
 import com.dorafather.phoneflow.net.ParkingNearbyStore
@@ -170,6 +171,7 @@ class MainActivity : ComponentActivity() {
 
         try {
             copyAssetScenarioFiles()
+            GatewayKeyFetcher.fetchAndApplyExKey(filesDir)
             FlowBridge.nativeSetCallback(FlowMessageRouter)
             FlowBridge.nativeInit(filesDir.absolutePath)
             Log.i(TAG, "FlowBridge.nativeInit() 호출 성공 (baseDir=${filesDir.absolutePath})")
