@@ -30,7 +30,8 @@ object AddrIniStore {
         val section: String,
         val label: String,
         val loginUrl: String?,
-        val signupUrl: String?
+        val signupUrl: String?,
+        val managedByGateway: Boolean
     )
 
     // data.go.kr이 보여주는 두 형태(Encoding/Decoding) 중 "Encoding"(이미
@@ -42,7 +43,12 @@ object AddrIniStore {
 
     private fun file(filesDir: File) = File(filesDir, "addr.ini")
 
-    /** service_key= 줄이 있는 모든 섹션을 공급자로 인식해, addr.ini 등장 순서대로 돌려준다. */
+    /** service_key= 줄이 있는 모든 섹션을 공급자로 인식해, addr.ini 등장 순서대로 돌려준다.
+     *  managed=gateway(2026-11-07 Cloudflare Workers 게이트웨이 마이그레이션 - K_DATA/
+     *  KOBIS/EX)인 공급자는 service_key가 더 이상 "사용자가 발급받아 넣는 실제 키"가
+     *  아니라 게이트웨이 공유 토큰이거나 앱이 자동으로 받아오는 값이라, 설정 화면이
+     *  키 입력 UI 대신 "자동 설정됨" 상태만 보여줘야 한다(그대로 두면 사용자가 자기
+     *  실제 키를 발급받아 넣었다가 게이트웨이에서 403으로 거부당하는 혼란이 생김). */
     fun readProviders(filesDir: File): List<Provider> {
         val f = file(filesDir)
         if (!f.exists()) return emptyList()
@@ -53,7 +59,8 @@ object AddrIniStore {
                 section = name,
                 label = kv["provider_label"] ?: name,
                 loginUrl = kv["provider_login_url"],
-                signupUrl = kv["provider_signup_url"]
+                signupUrl = kv["provider_signup_url"],
+                managedByGateway = kv["managed"] == "gateway"
             )
         }
     }

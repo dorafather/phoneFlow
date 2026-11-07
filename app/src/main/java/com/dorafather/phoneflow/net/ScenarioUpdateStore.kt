@@ -116,10 +116,16 @@ object ScenarioUpdateStore {
             val idx = trimmed.indexOf('=')
             if (idx <= 0) continue
             val key = trimmed.substring(0, idx).trim()
-            // service_key=는 어느 공급자 섹션(K_DATA/KOBIS/EX 등)에 있든 전부
-            // 사용자 소유 값이라 보존한다(2026-10-12 "공급자별 인증키" 설계 -
-            // 예전엔 K_DATA 하나만 하드코딩했었음).
-            val preserve = key == "service_key" || section.endsWith(PRESERVE_SECTIONS_SUFFIX)
+            // service_key=는 원래 "어느 공급자 섹션에 있든 전부 사용자 소유 값"이라
+            // 보존했으나(2026-10-12 "공급자별 인증키" 설계), 2026-11-07 게이트웨이
+            // 마이그레이션 이후 managed=gateway인 섹션(K_DATA/KOBIS/EX)의
+            // service_key는 더 이상 사용자가 넣는 값이 아니라 게이트웨이 공유
+            // 토큰(또는 앱이 자동으로 받아오는 값)이다 - 이 경우는 "사용자 소유
+            // 값 보존"이 오히려 역효과(토큰 로테이션을 "업데이트" 버튼으로 못
+            // 내려받게 막아버림)라 로컬 값을 보존하지 않고 원문(GitHub) 값을
+            // 그대로 쓴다. SAFEMAP처럼 managed= 가 없는 섹션은 기존처럼 보존.
+            val isGatewayManaged = local[section]?.get("managed") == "gateway"
+            val preserve = (key == "service_key" && !isGatewayManaged) || section.endsWith(PRESERVE_SECTIONS_SUFFIX)
             if (!preserve) continue
 
             val localValue = local[section]?.get(key) ?: continue

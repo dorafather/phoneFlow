@@ -66,11 +66,15 @@ fun SettingsScreen(filesDir: java.io.File, onProviderPicked: (String) -> Unit) {
                     .padding(vertical = 10.dp)
             ) {
                 Text(provider.label, style = MaterialTheme.typography.bodyLarge)
-                val masked = AddrIniStore.readMasked(filesDir, provider.section)
-                Text(
-                    masked?.let { "저장된 키: $it" } ?: "저장된 키 없음",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                if (provider.managedByGateway) {
+                    Text("자동 설정됨 (별도 입력 불필요)", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    val masked = AddrIniStore.readMasked(filesDir, provider.section)
+                    Text(
+                        masked?.let { "저장된 키: $it" } ?: "저장된 키 없음",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
             Divider()
         }
@@ -99,6 +103,22 @@ fun ProviderSettingsScreen(filesDir: java.io.File, section: String) {
     }
 
     val statuses = remember { mutableStateMapOf<String, CheckStatus>() }
+
+    if (provider?.managedByGateway == true) {
+        // 2026-11-07: K_DATA/KOBIS/EX는 실키를 게이트웨이(Cloudflare Workers)가
+        // 들고 있거나 앱이 기동 시 자동으로 받아오므로, 사용자가 직접 키를
+        // 발급받아 넣을 대상이 아니다 - 입력 UI를 보여주면 사용자가 자기 실제
+        // 키를 넣었다가 게이트웨이에 403으로 거부당해 혼란만 생긴다.
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(provider.label, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "이 서비스는 자동으로 설정되어 있어 별도로 키를 입력하실 필요가 없습니다.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        return
+    }
 
     LazyColumn(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         item {
