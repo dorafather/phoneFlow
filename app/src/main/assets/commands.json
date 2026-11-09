@@ -167,7 +167,8 @@
       "icon": "📖",
       "requires_section": "STDICT",
       "items": [
-        {"label": "검색", "insert": "사전 "}
+        {"label": "검색", "insert": "사전 "},
+        {"label": "상세검색", "insert": "사전상세 "}
       ]
     }
   ]

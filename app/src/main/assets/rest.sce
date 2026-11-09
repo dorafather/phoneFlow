@@ -57,6 +57,7 @@
     함수.앞자리비교(cmd_고캠핑,세션.chat_input_text,고캠핑)
     함수.앞자리비교(cmd_주변고캠핑,세션.chat_input_text,주변고캠핑)
     함수.앞자리비교(cmd_관광사진,세션.chat_input_text,관광사진)
+    함수.앞자리비교(cmd_사전상세,세션.chat_input_text,사전상세)
     함수.앞자리비교(cmd_사전,세션.chat_input_text,사전)
     처리.채팅명령분기
 }
@@ -118,6 +119,8 @@
     처리.텔레그램주변고캠핑명령처리
   그외그외(세션.cmd_관광사진 == 1)
     처리.텔레그램관광사진명령처리
+  그외그외(세션.cmd_사전상세 == 1)
+    처리.텔레그램사전상세명령처리
   그외그외(세션.cmd_사전 == 1)
     처리.텔레그램사전명령처리
   그외
@@ -192,6 +195,7 @@
 이벤트 [휴게소명] - 고속도로 휴게소 이벤트 현황 조회(최대 10건, 예: 이벤트 안성)
 전체메뉴 [휴게소명] - 고속도로 휴게소 전체 메뉴 조회(대표메뉴 포함 전체, 최대 20건, 예: 전체메뉴 안성)
 사전 [단어] - 국립국어원 표준국어대사전 뜻풀이 검색(동음이의어 최대 3건, 예: 사전 사과)
+사전상세 [단어] - 첫 번째 뜻풀이 기준 발음/품사/예문까지 상세 조회(예: 사전상세 나무)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4132,6 +4136,24 @@ $$$세션.keco_watch_alert_text$$$}
     전송.STDICT응답전송
   그외
     함수.저장(stdict_keyword,세션.cmd_rest)
+    함수.저장(stdict_mode,검색)
+    전송.STDICT검색전송
+}
+처리::TELEGRAM.텔레그램사전상세명령처리
+{
+  만약에(참)
+    함수.단어분리(stdictdetail_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.stdictdetail_cmd_word_list,1)
+    처리.STDICT상세명령파싱
+}
+처리::STDICT.STDICT상세명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(stdict_reply_text,문장.STDICT키워드없음문장)
+    전송.STDICT응답전송
+  그외
+    함수.저장(stdict_keyword,세션.cmd_rest)
+    함수.저장(stdict_mode,상세검색)
     전송.STDICT검색전송
 }
 전송::STDICT.STDICT검색전송
@@ -4152,6 +4174,15 @@ $$$세션.keco_watch_alert_text$$$}
 }
 처리::STDICT.STDICT응답분기처리
 {
+  만약에(세션.stdict_mode == 상세검색)
+    처리.STDICT상세검색응답처리
+  그외그외(세션.stdict_mode == 상세조회)
+    처리.STDICT상세조회응답처리
+  그외
+    처리.STDICT검색응답처리
+}
+처리::STDICT.STDICT검색응답처리
+{
   만약에(수신메시지.channel.total == 0)
     함수.저장(stdict_reply_text,문장.STDICT검색없음문장)
     전송.STDICT응답전송
@@ -4161,6 +4192,65 @@ $$$세션.keco_watch_alert_text$$$}
     함수.저장(stdict_count,0)
     함수.저장(stdict_summary_lines,없음)
     처리.STDICT항목순회
+}
+처리::STDICT.STDICT상세검색응답처리
+{
+  만약에(수신메시지.channel.total == 0)
+    함수.저장(stdict_reply_text,문장.STDICT검색없음문장)
+    전송.STDICT응답전송
+  그외
+    함수.객체저장(stdict_items,수신메시지.channel.item)
+    함수.저장(stdict_detail_target_code,세션.객체.stdict_items[0].target_code)
+    함수.저장(stdict_mode,상세조회)
+    전송.STDICT상세조회전송
+}
+전송::STDICT.STDICT상세조회전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.STDICT.domain
+  전송메시지.주소.경로 = /view.do
+  전송메시지.주소.파라미터[0].key = certkey_no
+  전송메시지.주소.파라미터[0].val = 11918
+  전송메시지.주소.파라미터[1].key = key
+  전송메시지.주소.파라미터[1].val = 설정.STDICT.service_key
+  전송메시지.주소.파라미터[2].key = type_search
+  전송메시지.주소.파라미터[2].val = view
+  전송메시지.주소.파라미터[3].key = method
+  전송메시지.주소.파라미터[3].val = TARGET_CODE
+  전송메시지.주소.파라미터[4].key = req_type
+  전송메시지.주소.파라미터[4].val = json
+  전송메시지.주소.파라미터[5].key = q
+  전송메시지.주소.파라미터[5].val = 세션.stdict_detail_target_code
+}
+처리::STDICT.STDICT상세조회응답처리
+{
+  만약에(수신메시지.channel.total == 0)
+    함수.저장(stdict_reply_text,문장.STDICT검색없음문장)
+    전송.STDICT응답전송
+  그외
+    함수.저장(stdict_detail_word,수신메시지.channel.item.word_info.word)
+    함수.저장(stdict_detail_pos,수신메시지.channel.item.word_info.pos_info[0].pos)
+    함수.저장(stdict_detail_def,수신메시지.channel.item.word_info.pos_info[0].comm_pattern_info[0].sense_info[0].definition)
+    처리.STDICT상세발음확인
+}
+처리::STDICT.STDICT상세발음확인
+{
+  만약에(수신메시지.channel.item.word_info.pronunciation_info[0].pronunciation == NULL)
+    함수.저장(stdict_detail_pron,-)
+    처리.STDICT상세예문확인
+  그외
+    함수.저장(stdict_detail_pron,수신메시지.channel.item.word_info.pronunciation_info[0].pronunciation)
+    처리.STDICT상세예문확인
+}
+처리::STDICT.STDICT상세예문확인
+{
+  만약에(수신메시지.channel.item.word_info.pos_info[0].comm_pattern_info[0].sense_info[0].example_info[0].example == NULL)
+    함수.저장(stdict_reply_text,문장.STDICT상세문장)
+    전송.STDICT응답전송
+  그외
+    함수.저장(stdict_detail_example,수신메시지.channel.item.word_info.pos_info[0].comm_pattern_info[0].sense_info[0].example_info[0].example)
+    함수.저장(stdict_reply_text,문장.STDICT상세예문있음문장)
+    전송.STDICT응답전송
 }
 처리::STDICT.STDICT항목순회
 {
@@ -4202,6 +4292,13 @@ $$$세션.keco_watch_alert_text$$$}
 {"$$$세션.stdict_keyword$$$"(으)로 검색된 단어가 없습니다.}
 문장::TELEGRAM.STDICT키워드없음문장
 {검색할 단어를 입력해주세요. 예) "사전 사과"}
+문장::STDICT.STDICT상세문장
+{$$$세션.stdict_detail_word$$$($$$세션.stdict_detail_pos$$$) [발음: $$$세션.stdict_detail_pron$$$]
+$$$세션.stdict_detail_def$$$}
+문장::STDICT.STDICT상세예문있음문장
+{$$$세션.stdict_detail_word$$$($$$세션.stdict_detail_pos$$$) [발음: $$$세션.stdict_detail_pron$$$]
+$$$세션.stdict_detail_def$$$
+예문: $$$세션.stdict_detail_example$$$}
 처리::TELEGRAM.텔레그램병원명령처리
 {
   만약에(참)
