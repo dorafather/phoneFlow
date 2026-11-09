@@ -161,6 +161,14 @@
         {"label": "테마휴게소", "insert": "테마 "},
         {"label": "이벤트", "insert": "이벤트 "}
       ]
+    },
+    {
+      "label": "사전",
+      "icon": "📖",
+      "requires_section": "STDICT",
+      "items": [
+        {"label": "검색", "insert": "사전 "}
+      ]
     }
   ]
 }

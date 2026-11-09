@@ -48,6 +48,7 @@ object GatewayKeyFetcher {
         executor.execute {
             applyGatewayTokenLocally(filesDir, "K_DATA")
             applyGatewayTokenLocally(filesDir, "KOBIS")
+            applyGatewayTokenLocally(filesDir, "STDICT")
             fetchAndApplyExKey(filesDir)
         }
     }

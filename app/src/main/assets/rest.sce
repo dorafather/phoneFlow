@@ -23,6 +23,7 @@
   PARKING.수신메시지.응답코드 == 200    처리.PARKING목록응답처리
   GOCAMPING.수신메시지.응답코드 == 200    처리.GOCAMPING응답분기처리
   TOURPHOTO.수신메시지.응답코드 == 200    처리.TOURPHOTO응답분기처리
+  STDICT.수신메시지.응답코드 == 200    처리.STDICT응답분기처리
 }
 처리::FLOW.채팅입력처리
 {
@@ -56,6 +57,7 @@
     함수.앞자리비교(cmd_고캠핑,세션.chat_input_text,고캠핑)
     함수.앞자리비교(cmd_주변고캠핑,세션.chat_input_text,주변고캠핑)
     함수.앞자리비교(cmd_관광사진,세션.chat_input_text,관광사진)
+    함수.앞자리비교(cmd_사전,세션.chat_input_text,사전)
     처리.채팅명령분기
 }
 처리::FLOW.채팅명령분기
@@ -116,6 +118,8 @@
     처리.텔레그램주변고캠핑명령처리
   그외그외(세션.cmd_관광사진 == 1)
     처리.텔레그램관광사진명령처리
+  그외그외(세션.cmd_사전 == 1)
+    처리.텔레그램사전명령처리
   그외
     전송.명령모름응답
 }
@@ -187,6 +191,7 @@
 테마 [휴게소명] - 고속도로 테마휴게소 현황 조회(예: 테마 안성)
 이벤트 [휴게소명] - 고속도로 휴게소 이벤트 현황 조회(최대 10건, 예: 이벤트 안성)
 전체메뉴 [휴게소명] - 고속도로 휴게소 전체 메뉴 조회(대표메뉴 포함 전체, 최대 20건, 예: 전체메뉴 안성)
+사전 [단어] - 국립국어원 표준국어대사전 뜻풀이 검색(동음이의어 최대 3건, 예: 사전 사과)
 help - 이 도움말 표시}
 처리::FLOW.procRestInit
 {
@@ -4113,6 +4118,90 @@ $$$세션.keco_watch_alert_text$$$}
 {"$$$세션.tourphoto_keyword$$$"(으)로 검색된 관광사진이 없습니다.}
 문장::TELEGRAM.TOURPHOTO키워드없음문장
 {검색할 관광사진 키워드를 입력해주세요. 예) "관광사진 서울 야경"}
+처리::TELEGRAM.텔레그램사전명령처리
+{
+  만약에(참)
+    함수.단어분리(stdict_cmd_word_list,세션.chat_input_text)
+    함수.단어합치기(cmd_rest,세션.리스트.stdict_cmd_word_list,1)
+    처리.STDICT명령파싱
+}
+처리::STDICT.STDICT명령파싱
+{
+  만약에(세션.cmd_rest == NULL)
+    함수.저장(stdict_reply_text,문장.STDICT키워드없음문장)
+    전송.STDICT응답전송
+  그외
+    함수.저장(stdict_keyword,세션.cmd_rest)
+    전송.STDICT검색전송
+}
+전송::STDICT.STDICT검색전송
+{
+  전송메시지.메소드 = GET
+  전송메시지.주소.도메인 = 설정.STDICT.domain
+  전송메시지.주소.경로 = /search.do
+  전송메시지.주소.파라미터[0].key = certkey_no
+  전송메시지.주소.파라미터[0].val = 11918
+  전송메시지.주소.파라미터[1].key = key
+  전송메시지.주소.파라미터[1].val = 설정.STDICT.service_key
+  전송메시지.주소.파라미터[2].key = type_search
+  전송메시지.주소.파라미터[2].val = search
+  전송메시지.주소.파라미터[3].key = req_type
+  전송메시지.주소.파라미터[3].val = json
+  전송메시지.주소.파라미터[4].key = q
+  전송메시지.주소.파라미터[4].val = 세션.stdict_keyword
+}
+처리::STDICT.STDICT응답분기처리
+{
+  만약에(수신메시지.channel.total == 0)
+    함수.저장(stdict_reply_text,문장.STDICT검색없음문장)
+    전송.STDICT응답전송
+  그외
+    함수.객체저장(stdict_items,수신메시지.channel.item)
+    함수.저장(stdict_idx,0)
+    함수.저장(stdict_count,0)
+    함수.저장(stdict_summary_lines,없음)
+    처리.STDICT항목순회
+}
+처리::STDICT.STDICT항목순회
+{
+  만약에(세션.객체.stdict_items[세션.stdict_idx].word == NULL)
+    함수.저장(stdict_reply_text,문장.STDICT검색요약문장)
+    전송.STDICT응답전송
+  그외그외(세션.stdict_count >= 3)
+    함수.저장(stdict_reply_text,문장.STDICT검색요약문장)
+    전송.STDICT응답전송
+  그외
+    함수.저장(stdict_cur_word,세션.객체.stdict_items[세션.stdict_idx].word)
+    함수.저장(stdict_cur_pos,세션.객체.stdict_items[세션.stdict_idx].pos)
+    함수.저장(stdict_cur_def,세션.객체.stdict_items[세션.stdict_idx].sense.definition)
+    처리.STDICT항목추가
+}
+처리::STDICT.STDICT항목추가
+{
+  만약에(세션.stdict_count == 0)
+    함수.저장(stdict_summary_lines,문장.STDICT검색라인문장)
+    함수.더하기(stdict_count,세션.stdict_count,1)
+    함수.더하기(stdict_idx,세션.stdict_idx,1)
+    처리.STDICT항목순회
+  그외
+    함수.붙이기(stdict_summary_lines,|,문장.STDICT검색라인문장)
+    함수.더하기(stdict_count,세션.stdict_count,1)
+    함수.더하기(stdict_idx,세션.stdict_idx,1)
+    처리.STDICT항목순회
+}
+전송::FLOW.STDICT응답전송
+{
+  전송메시지.이벤트명 = 봇응답
+  전송메시지.text = 세션.stdict_reply_text
+}
+문장::STDICT.STDICT검색라인문장
+{$$$세션.stdict_cur_word$$$($$$세션.stdict_cur_pos$$$): $$$세션.stdict_cur_def$$$}
+문장::STDICT.STDICT검색요약문장
+{"$$$세션.stdict_keyword$$$" 사전 검색 결과: $$$세션.stdict_summary_lines$$$}
+문장::STDICT.STDICT검색없음문장
+{"$$$세션.stdict_keyword$$$"(으)로 검색된 단어가 없습니다.}
+문장::TELEGRAM.STDICT키워드없음문장
+{검색할 단어를 입력해주세요. 예) "사전 사과"}
 처리::TELEGRAM.텔레그램병원명령처리
 {
   만약에(참)
